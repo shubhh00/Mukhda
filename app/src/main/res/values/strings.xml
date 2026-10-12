@@ -1,0 +1,20 @@
+<resources>
+    <string name="app_name">Mukhda</string>
+
+    <string name="wordmark" translatable="false">MUKHDA</string>
+    <string name="wordmark_devanagari" translatable="false">मुखड़ा</string>
+
+    <string name="tier_easy">Easy</string>
+    <string name="tier_medium">Medium</string>
+    <string name="tier_hard">Hard</string>
+    <string name="tier_expert">Expert</string>
+    <string name="tier_legend">Legend</string>
+
+    <!-- Plain English, short, and each one points at an action. -->
+    <string name="error_no_internet">No connection. Check your internet and try again.</string>
+    <string name="error_timeout">That took too long. Try again.</string>
+    <string name="error_too_many_requests">Too many tries at once. Wait a moment and try again.</string>
+    <string name="error_server">Something went wrong on our side. Try again in a bit.</string>
+    <string name="error_disk_full">Your phone is out of space. Free some up and try again.</string>
+    <string name="error_unknown">Something went wrong. Try again.</string>
+</resources>
