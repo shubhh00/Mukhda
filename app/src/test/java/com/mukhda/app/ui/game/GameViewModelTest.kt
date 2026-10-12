@@ -28,9 +28,17 @@ class GameViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private val songIndex = FakeSongIndexDataSource()
+
+    @Test
+    fun `opening the screen prepares the search index`() {
+        GameViewModel(SavedStateHandle(), songIndex)
+        assertThat(songIndex.prepareCalls).isEqualTo(1)
+    }
+
     @Test
     fun `tapping a tier selects it`() = runTest {
-        val viewModel = GameViewModel(SavedStateHandle())
+        val viewModel = GameViewModel(SavedStateHandle(), songIndex)
 
         viewModel.state.test {
             assertThat(awaitItem().selectedTier).isEqualTo(Tier.EASY)
@@ -42,9 +50,9 @@ class GameViewModelTest {
     @Test
     fun `guess text survives process death`() {
         val handle = SavedStateHandle()
-        GameViewModel(handle).onAction(GameAction.OnGuessTextChange("lootera shik"))
+        GameViewModel(handle, songIndex).onAction(GameAction.OnGuessTextChange("lootera shik"))
 
-        val restored = GameViewModel(handle)
+        val restored = GameViewModel(handle, songIndex)
         assertThat(restored.state.value.guessText).isEqualTo("lootera shik")
     }
 }

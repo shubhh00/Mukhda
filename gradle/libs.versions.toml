@@ -21,6 +21,7 @@ junit5 = "5.13.4"
 assertk = "0.28.1"
 turbine = "1.2.1"
 androidxJunit = "1.3.0"
+androidxTestRunner = "1.7.0"
 espressoCore = "3.7.0"
 
 [libraries]
@@ -71,6 +72,7 @@ assertk = { group = "com.willowtreeapps.assertk", name = "assertk", version.ref 
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxJunit" }
+androidx-test-runner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
 androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
 
 [plugins]
