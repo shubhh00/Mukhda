@@ -2,18 +2,20 @@ package com.mukhda.app.ui.theme
 
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import com.mukhda.app.R
 
 /**
- * Font roles.
- * TODO: bundle Rozha One, Yatra One, Oswald and Hind (OFL) under res/font and swap these in.
+ * Font roles. Rozha One and Yatra One are bundled (SIL OFL, licences in assets/licenses).
+ * TODO: bundle Oswald (labels) and Hind (body) too; they use the system sans until then.
  */
 internal object MukhdaFonts {
-    val Display: FontFamily = FontFamily.Serif      // Rozha One
-    val Devanagari: FontFamily = FontFamily.Serif   // Yatra One
+    val Display: FontFamily = FontFamily(Font(R.font.rozha_one))
+    val Devanagari: FontFamily = FontFamily(Font(R.font.yatra_one))
     val Label: FontFamily = FontFamily.SansSerif    // Oswald 500/700
     val Body: FontFamily = FontFamily.SansSerif     // Hind 400–700
 }
