@@ -24,6 +24,8 @@ class FakeSearchIndexDao : SearchIndexDao {
         return songs.toList()
     }
 
+    override suspend fun byIds(ids: List<String>): List<SearchSongEntity> = songs.filter { it.songId in ids }
+
     override suspend fun clear() = songs.clear()
 
     override suspend fun insertAll(songs: List<SearchSongEntity>) {

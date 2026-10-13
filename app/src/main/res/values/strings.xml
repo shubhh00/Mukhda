@@ -10,6 +10,42 @@
     <string name="tier_expert">Expert</string>
     <string name="tier_legend">Legend</string>
 
+    <!-- Game screen -->
+    <string name="show_line">SHOW NO. %1$d · %2$s</string>
+    <string name="streak_badge">%1$d HOUSEFULL</string>
+    <string name="clip_label">%1$s · clip %2$d of %3$d</string>
+    <string name="clip_0">0.1 sec</string>
+    <string name="clip_1">0.5 sec</string>
+    <string name="clip_2">1 sec</string>
+    <string name="clip_3">2 sec</string>
+    <string name="clip_full">Full</string>
+    <string name="cd_play_clip">Play clip</string>
+    <string name="cd_stop_clip">Stop clip</string>
+
+    <string name="stamp_wrong">WRONG</string>
+    <string name="stamp_right_film">RIGHT FILM</string>
+    <string name="stamp_skipped">SKIPPED</string>
+    <string name="stamp_correct">CORRECT</string>
+    <string name="slot_skipped">Skipped</string>
+    <string name="slot_unknown_song">Song not in the list</string>
+    <string name="round_won">You got it.</string>
+    <string name="round_lost">Out of tries for this tier. Try another one, or come back for the next show.</string>
+
+    <string name="guess_hint">Type a song or film</string>
+    <string name="guess_closed">This round is over</string>
+    <string name="skip">Skip</string>
+    <string name="guess">Guess</string>
+    <string name="pick_a_song">PICK A SONG</string>
+    <string name="more_results">%1$d OF %2$d SHOWN · TYPE MORE TO NARROW</string>
+    <string name="already_guessed">Already guessed</string>
+    <string name="replay_clip">▶ REPLAY</string>
+    <string name="stop_clip">■ STOP</string>
+    <string name="apple_music_credit" translatable="false">PREVIEWS COURTESY OF APPLE MUSIC</string>
+    <string name="retry">Retry</string>
+
+    <string name="error_round_closed">This show has ended. Loading today\'s show.</string>
+    <string name="error_invalid_song">That song isn\'t in our list. Pick one from the suggestions.</string>
+
     <!-- Plain English, short, and each one points at an action. -->
     <string name="error_no_internet">No connection. Check your internet and try again.</string>
     <string name="error_timeout">That took too long. Try again.</string>

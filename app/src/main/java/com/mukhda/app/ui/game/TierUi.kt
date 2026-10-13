@@ -20,6 +20,15 @@ internal fun Tier.colors(): TierColors = with(MukhdaTheme.colors) {
     }
 }
 
+/**
+ * Colours for the play button and current clip frame. Same as the tier's, except Legend: its
+ * maroon would vanish against the dark vinyl and film strip, so it's inverted to saffron.
+ */
+@Composable
+@ReadOnlyComposable
+internal fun Tier.accentColors(): TierColors =
+    if (this == Tier.LEGEND) with(MukhdaTheme.colors) { TierColors(saffron, maroon) } else colors()
+
 @get:StringRes
 internal val Tier.labelRes: Int
     get() = when (this) {

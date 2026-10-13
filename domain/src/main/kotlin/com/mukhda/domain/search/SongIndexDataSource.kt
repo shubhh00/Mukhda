@@ -11,4 +11,7 @@ interface SongIndexDataSource {
 
     /** Ranked title/film matches for [query]; fewer than two characters gives no results. */
     suspend fun search(query: String): Outcome<SearchResults, DataError.Local>
+
+    /** The songs with these ids, to show what was guessed in earlier tries. Unknown ids are left out. */
+    suspend fun songs(ids: Collection<String>): Outcome<Map<String, SearchSong>, DataError.Local>
 }

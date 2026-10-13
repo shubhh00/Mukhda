@@ -7,6 +7,7 @@ import com.mukhda.domain.EmptyOutcome
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.search.SearchNormalizer
 import com.mukhda.domain.search.SearchResults
+import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.search.SongSearcher
 import kotlinx.coroutines.CancellationException
@@ -49,6 +50,12 @@ class RoomSongIndexDataSource @Inject constructor(
         val prefixMatches = dao.matchPrefix(tokens.joinToString(" ") { "$it*" })
         val fast = SongSearcher(prefixMatches.map { it.toSearchSong() }).search(query)
         if (fast.items.size >= SongSearcher.MAX_RESULTS) fast else fullIndex().search(query)
+    }
+
+    override suspend fun songs(ids: Collection<String>): Outcome<Map<String, SearchSong>, DataError.Local> = local {
+        if (ids.isEmpty()) return@local emptyMap()
+        ensurePrepared()
+        dao.byIds(ids.distinct()).associate { it.songId to it.toSearchSong() }
     }
 
     private suspend fun ensurePrepared() = mutex.withLock {

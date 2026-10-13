@@ -24,6 +24,9 @@ interface SearchIndexDao {
     @Query("SELECT * FROM search_songs")
     suspend fun all(): List<SearchSongEntity>
 
+    @Query("SELECT * FROM search_songs WHERE songId IN (:ids)")
+    suspend fun byIds(ids: List<String>): List<SearchSongEntity>
+
     @Query("DELETE FROM search_songs")
     suspend fun clear()
 
