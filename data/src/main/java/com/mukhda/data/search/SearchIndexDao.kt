@@ -2,6 +2,7 @@ package com.mukhda.data.search
 
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
@@ -30,7 +31,8 @@ interface SearchIndexDao {
     @Query("DELETE FROM search_songs")
     suspend fun clear()
 
-    @Insert
+    /** A repeated songId is skipped rather than failing the whole import. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(songs: List<SearchSongEntity>)
 
     @Upsert
