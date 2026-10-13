@@ -10,6 +10,8 @@ export interface MatchResult {
   status: Status;
   reasons: Reason[];
   track?: ItunesTrack;
+  /** Accepted by a human or chat review after the automatic check flagged it. */
+  reviewed?: boolean;
 }
 
 /** Markers that a track isn't the original film version. Checked only in the suffix, never the title itself. */
@@ -28,7 +30,7 @@ export function isAlternateVersion(trackName: string): boolean {
 
 /** "Kesariya (From \"Brahmastra\")" -> base "Kesariya", suffix "(From \"Brahmastra\")". */
 export function splitTrackName(name: string): { base: string; suffix: string } {
-  const cut = name.search(/\s[([]|\s-\s/);
+  const cut = name.search(/\s[([]|\s[-–—]\s/);
   return cut === -1 ? { base: name, suffix: "" } : { base: name.slice(0, cut), suffix: name.slice(cut) };
 }
 

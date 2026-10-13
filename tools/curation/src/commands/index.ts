@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ROOT, paths } from "../config.ts";
 import { ItunesClient } from "../itunes.ts";
@@ -94,12 +94,26 @@ export async function writeSearchIndex(): Promise<void> {
   await mkdir(path.join(paths.index), { recursive: true });
   await writeFile(path.join(paths.index, "search_index.json"), body);
 
-  const existing = (await readdir(APP_INDEX_DIR).catch(() => [] as string[]))
-    .map((f) => /^v(\d+)\.json$/.exec(f)?.[1])
-    .filter((v): v is string => v !== undefined)
-    .map(Number);
-  const version = Math.max(0, ...existing) + 1;
+  await publishToApp(body);
+}
+
+/**
+ * Bundles the index as assets/search_index/v<N>.json. Installed apps only re-import a higher N,
+ * so N goes up only when the songs change, and only the newest file is kept in the app.
+ */
+async function publishToApp(body: string): Promise<void> {
   await mkdir(APP_INDEX_DIR, { recursive: true });
-  await writeFile(path.join(APP_INDEX_DIR, `v${version}.json`), body);
-  console.log(`Wrote data/index/search_index.json and the app's assets/search_index/v${version}.json.`);
+  const versions = (await readdir(APP_INDEX_DIR))
+    .map((f) => Number(/^v(\d+)\.json$/.exec(f)?.[1]))
+    .filter((v) => Number.isInteger(v))
+    .sort((a, b) => a - b);
+  const latest = versions.at(-1);
+  if (latest !== undefined && (await readFile(path.join(APP_INDEX_DIR, `v${latest}.json`), "utf8")) === body) {
+    console.log(`Songs unchanged; the app keeps assets/search_index/v${latest}.json.`);
+    return;
+  }
+  const next = (latest ?? 0) + 1;
+  await writeFile(path.join(APP_INDEX_DIR, `v${next}.json`), body);
+  for (const old of versions) await rm(path.join(APP_INDEX_DIR, `v${old}.json`));
+  console.log(`Wrote data/index/search_index.json and the app's assets/search_index/v${next}.json.`);
 }

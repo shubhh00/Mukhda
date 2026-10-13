@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { ItunesTrack } from "../src/itunes.ts";
-import { assembleIndex, filmIdOf, isFullSoundtrack, mostCommon, songIdOf } from "../src/search-index.ts";
+import { assembleIndex, filmIdOf, indexTitle, isFullSoundtrack, isSong, mostCommon, songIdOf } from "../src/search-index.ts";
 
 const track = (trackId: number, trackName: string, collectionName = "Lootera (Original Motion Picture Soundtrack)") =>
   ({ trackId, trackName, collectionName, artistName: "Amit Trivedi", releaseDate: "2013-05-29T00:00:00Z", trackViewUrl: "" }) as ItunesTrack;
@@ -38,5 +38,53 @@ test("helpers", () => {
   assert.equal(mostCommon(["Lootera", "Lootera", "Lutera"]), "Lootera");
   assert.ok(isFullSoundtrack({ collectionName: "Lootera (Original Motion Picture Soundtrack)", trackCount: 6 }));
   assert.ok(!isFullSoundtrack({ collectionName: "Kesariya - Single", trackCount: 1 }));
-  assert.ok(!isFullSoundtrack({ collectionName: "Purani Dilli - EP", trackCount: 4 }));
+  assert.ok(isFullSoundtrack({ collectionName: "Pyaar Impossible (Original Soundtrack) - EP", trackCount: 7 }));
+  assert.ok(!isFullSoundtrack({ collectionName: "Kal Ho Naa Ho - Bollywood Hits", trackCount: 100 }));
+  assert.ok(!isFullSoundtrack({ collectionName: "Dekhha Tenu (From \"Mr. And Mrs. Mahi\") - Single", trackCount: 2 }));
+});
+
+test("themes, dialogues, medleys and in-title versions aren't songs", () => {
+  for (const name of ["Theme Music", "Akash's Love Theme", "Dialogues", "Ranvijay's Entry Medley", "Hua Hua Remix",
+    "Tum Dil Ki Dhadkan Instrumental", "Kabhi Kabhi Mere Dil Mein Yeh Sawaal Aata Hai House Track", "Zinda (Reprise)",
+    "Chaleya Arabic Version", "Raja Ram – Female Version"]) {
+    assert.ok(!isSong(name), name);
+  }
+  for (const name of ["Abrar's Entry Jamal Kudu", "Main Sada Hoon", "Tum Hi Ho", 'Kesariya (From "Brahmastra")']) {
+    assert.ok(isSong(name), name);
+  }
+});
+
+test("featured artists are cut from titles", () => {
+  assert.equal(indexTitle("Main Hoon Saath Tere Feat. Shivangi Bhayana"), "Main Hoon Saath Tere");
+  assert.equal(indexTitle("Tu Banja Gali Benaras Ki ft. Asees Kaur"), "Tu Banja Gali Benaras Ki");
+  assert.equal(indexTitle("Kesariya"), "Kesariya");
+});
+
+test("a verified recreation stays searchable under its clean title, even as a remix", () => {
+  const remix = track(700, "Oh Ho Ho Ho (Remix)", "Hindi Medium (Original Motion Picture Soundtrack)");
+  const index = assembleIndex([{ track: remix, film: "Hindi Medium", year: 2017 }], []);
+  assert.deepEqual(index.map((s) => [s.songId, s.title]), [["s_700", "Oh Ho Ho Ho"]]);
+});
+
+test("a track suggested for two films is filed once, under the film its album matches", () => {
+  const kaySera = track(1281577228, "Kay Sera Sera", "Pukar (Original Motion Picture Soundtrack)");
+  const pool = [
+    { track: kaySera, film: "Dhadkan", year: 2000 },
+    { track: kaySera, film: "Pukar", year: 2000 },
+  ];
+  const index = assembleIndex(pool, []);
+  assert.equal(index.length, 1);
+  assert.equal(index[0]?.filmTitle, "Pukar");
+});
+
+test("between a film and its sequel, the year closest to the track's release wins", () => {
+  const chot = { ...track(1749323778, "Chot Dil Pe Lagi", "Ishq Vishk (Original Motion Picture Soundtrack)"), releaseDate: "2003-04-01T00:00:00Z" };
+  const index = assembleIndex(
+    [
+      { track: chot, film: "Ishq Vishk Rebound", year: 2024 },
+      { track: chot, film: "Ishq Vishk", year: 2003 },
+    ],
+    [],
+  );
+  assert.deepEqual(index.map((s) => [s.filmTitle, s.year]), [["Ishq Vishk", 2003]]);
 });

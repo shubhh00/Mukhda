@@ -2,6 +2,7 @@ import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { DOWNLOAD_PREFIX, paths } from "../config.ts";
 import { joined, normalize } from "../normalize.ts";
+import { loadReviewAnswers } from "../review-answers.ts";
 import type { VerifiedFile, VerifiedRow } from "./verify.ts";
 
 const BATCH_SIZE = 40;
@@ -69,11 +70,13 @@ export async function writeReviewPrompts(): Promise<void> {
     }
   }
 
+  // Rows already answered in an earlier review round aren't asked about again.
+  const answered = await loadReviewAnswers();
   const foundSomewhere = new Set(rows.filter(({ row }) => row.result.status === "found").map(({ row }) => songKey(row)));
   const seen = new Set<string>();
-  const items = rows.filter(({ row }) => {
+  const items = rows.filter(({ id, row }) => {
     const key = songKey(row);
-    if (row.result.status === "found" || foundSomewhere.has(key) || seen.has(key)) return false;
+    if (row.result.status === "found" || answered.has(id) || foundSomewhere.has(key) || seen.has(key)) return false;
     seen.add(key);
     return true;
   });

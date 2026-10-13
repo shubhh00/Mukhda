@@ -5,6 +5,7 @@ import { paths } from "../config.ts";
 import { importDownloads } from "./import.ts";
 import { ItunesClient } from "../itunes.ts";
 import { type MatchResult, baseTitle, better, evaluate } from "../match.ts";
+import { type ReviewAnswer, applyReview, correctedCandidate, loadReviewAnswers } from "../review-answers.ts";
 
 export interface VerifiedRow {
   candidate: Candidate;
@@ -23,6 +24,7 @@ export interface VerifiedFile {
 /** Checks every candidate file of every source against iTunes and writes data/verified/. */
 export async function verifyAll(): Promise<void> {
   const itunes = new ItunesClient(paths.itunesCache);
+  const answers = await loadReviewAnswers();
   // Chat downloads saved in data/candidates/ or one of its folders under their download name
   // (mukhda-2004-all.json) are filed into data/candidates/chat/ first.
   await importDownloads(paths.candidates, paths.candidates, { quietWhenEmpty: true });
@@ -42,7 +44,7 @@ export async function verifyAll(): Promise<void> {
   for (const source of sources) {
     const files = (await readdir(path.join(paths.candidates, source))).filter((f) => f.endsWith(".json"));
     for (const file of files) {
-      const verified = await verifyFile(itunes, source, file);
+      const verified = await verifyFile(itunes, source, file, answers);
       const outDir = path.join(paths.verified, source);
       await mkdir(outDir, { recursive: true });
       await writeFile(path.join(outDir, file), JSON.stringify(verified, null, 2));
@@ -51,7 +53,12 @@ export async function verifyAll(): Promise<void> {
   console.log("\nDone. Run `npm run report` to compare sources.");
 }
 
-async function verifyFile(itunes: ItunesClient, source: string, file: string): Promise<VerifiedFile> {
+async function verifyFile(
+  itunes: ItunesClient,
+  source: string,
+  file: string,
+  answers: Map<string, ReviewAnswer>,
+): Promise<VerifiedFile> {
   const text = await readFile(path.join(paths.candidates, source, file), "utf8");
   let parsed;
   try {
@@ -66,7 +73,9 @@ async function verifyFile(itunes: ItunesClient, source: string, file: string): P
   for (const [i, candidate] of parsed.candidates.entries()) {
     process.stdout.write(`\r${source}/${file}: ${i + 1}/${parsed.candidates.length}   `);
     try {
-      rows.push({ candidate, result: await verifyCandidate(itunes, candidate) });
+      const answer = answers.get(`${source}/${file}#${i}`);
+      const result = applyReview(await verifyCandidate(itunes, candidate), answer);
+      rows.push({ candidate: result.reviewed ? correctedCandidate(candidate, answer!) : candidate, result });
     } catch (error) {
       // One song Apple won't answer for mustn't stop the run. It isn't cached, so the next run retries it.
       skipped++;
