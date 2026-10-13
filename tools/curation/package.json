@@ -1,0 +1,26 @@
+{
+  "name": "mukhda-curation",
+  "private": true,
+  "type": "module",
+  "description": "Builds Mukhda's song pool: LLM candidates, iTunes verification, tiering, publishing.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prompts": "node --disable-warning=ExperimentalWarning src/cli.ts prompts",
+    "import": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts import",
+    "verify": "node --disable-warning=ExperimentalWarning src/cli.ts verify",
+    "report": "node --disable-warning=ExperimentalWarning src/cli.ts report",
+    "review": "node --disable-warning=ExperimentalWarning src/cli.ts review",
+    "index": "node --disable-warning=ExperimentalWarning src/cli.ts index",
+    "typecheck": "tsc",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\""
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}

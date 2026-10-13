@@ -1,0 +1,4 @@
+node_modules/
+.env
+# Generated working data (LLM answers, iTunes cache, reports). Not source.
+data/
