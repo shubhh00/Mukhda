@@ -1,5 +1,6 @@
 package com.mukhda.app.ui.game
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -10,6 +11,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -22,14 +25,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
@@ -95,23 +102,51 @@ private fun GuessInput(state: GameState, onAction: (GameAction) -> Unit) {
         keyboardActions = KeyboardActions(onDone = { if (state.canGuess) onAction(GameAction.OnGuessClick) }),
         modifier = Modifier
             .fillMaxWidth()
+            .onFocusChanged { if (it.isFocused) onAction(GameAction.OnGuessFieldFocus) }
             .hardShadow(colors.maroon, 3.dp)
             .background(colors.paperLight)
             .border(2.dp, colors.maroon)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         decorationBox = { field ->
-            Box {
-                if (state.guessText.isEmpty()) {
-                    Text(
-                        text = stringResource(if (enabled) R.string.guess_hint else R.string.guess_closed),
-                        style = MukhdaTheme.typography.body,
-                        color = colors.muted,
-                    )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(modifier = Modifier.weight(1f)) {
+                    if (state.guessText.isEmpty()) {
+                        Text(
+                            text = stringResource(if (enabled) R.string.guess_hint else R.string.guess_closed),
+                            style = MukhdaTheme.typography.body,
+                            color = colors.muted,
+                        )
+                    }
+                    field()
                 }
-                field()
+                if (enabled && state.guessText.isNotEmpty()) {
+                    ClearButton(onClick = { onAction(GameAction.OnClearGuessClick) })
+                }
             }
         },
     )
+}
+
+/** ✕ inside the guess box: clears what's typed and keeps the keyboard up. */
+@Composable
+private fun ClearButton(onClick: () -> Unit) {
+    val color = MukhdaTheme.colors.maroon
+    val label = stringResource(R.string.cd_clear_guess)
+    Box(
+        modifier = Modifier
+            .padding(start = 8.dp)
+            .size(24.dp)
+            .clip(CircleShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(12.dp)) {
+            val stroke = 2.dp.toPx()
+            drawLine(color, Offset.Zero, Offset(size.width, size.height), stroke, StrokeCap.Round)
+            drawLine(color, Offset(size.width, 0f), Offset(0f, size.height), stroke, StrokeCap.Round)
+        }
+    }
 }
 
 /** Up to five matches for the guess box, with the replay control kept in reach while searching. */

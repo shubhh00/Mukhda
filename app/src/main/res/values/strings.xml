@@ -33,6 +33,7 @@
 
     <string name="guess_hint">Type a song or film</string>
     <string name="guess_closed">This round is over</string>
+    <string name="cd_clear_guess">Clear</string>
     <string name="skip">Skip</string>
     <string name="guess">Guess</string>
     <string name="pick_a_song">PICK A SONG</string>

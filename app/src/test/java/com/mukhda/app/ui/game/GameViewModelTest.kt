@@ -258,6 +258,51 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `closing the list keeps the typed text, and focusing the box brings it back`() = runTest(dispatcher) {
+        val vm = viewModel()
+        type(vm, "kal ho")
+        assertThat(vm.state.value.isDropdownOpen).isTrue()
+
+        vm.onAction(GameAction.OnDismissSuggestions)
+        assertThat(vm.state.value.isDropdownOpen).isFalse()
+        assertThat(vm.state.value.guessText).isEqualTo("kal ho")
+
+        vm.onAction(GameAction.OnGuessFieldFocus)
+        assertThat(vm.state.value.isDropdownOpen).isTrue()
+    }
+
+    @Test
+    fun `typing again reopens a closed list`() = runTest(dispatcher) {
+        val vm = viewModel()
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnDismissSuggestions)
+        type(vm, "kal ho n")
+        assertThat(vm.state.value.isDropdownOpen).isTrue()
+    }
+
+    @Test
+    fun `tapping a tier closes the list`() = runTest(dispatcher) {
+        val vm = viewModel()
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnTierClick(Tier.HARD))
+        assertThat(vm.state.value.isDropdownOpen).isFalse()
+    }
+
+    @Test
+    fun `clear empties the box, the pick and the list`() = runTest(dispatcher) {
+        val vm = viewModel()
+        type(vm, "tum hi")
+        vm.onAction(GameAction.OnSuggestionClick("s10"))
+        vm.onAction(GameAction.OnClearGuessClick)
+
+        val state = vm.state.value
+        assertThat(state.guessText).isEqualTo("")
+        assertThat(state.selectedSong).isNull()
+        assertThat(state.suggestions).isEmpty()
+        assertThat(state.canGuess).isFalse()
+    }
+
+    @Test
     fun `guess text survives process death`() = runTest(dispatcher) {
         val handle = SavedStateHandle()
         viewModel(handle).onAction(GameAction.OnGuessTextChange("lootera shik"))

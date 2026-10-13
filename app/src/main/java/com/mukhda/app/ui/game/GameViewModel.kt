@@ -65,6 +65,12 @@ class GameViewModel @Inject constructor(
             GameAction.OnSkipClick -> submit(TryType.SKIP, songId = null)
             GameAction.OnPlayClick -> togglePlay()
             GameAction.OnRetryClick -> loadShow()
+            GameAction.OnClearGuessClick -> {
+                searchJob?.cancel()
+                clearGuess()
+            }
+            GameAction.OnGuessFieldFocus -> _state.update { it.copy(suggestionsDismissed = false) }
+            GameAction.OnDismissSuggestions -> _state.update { it.copy(suggestionsDismissed = true) }
         }
     }
 
@@ -102,7 +108,8 @@ class GameViewModel @Inject constructor(
 
     private fun selectTier(action: GameAction.OnTierClick) {
         stopPlaying()
-        _state.update { it.copy(selectedTier = action.tier) }
+        // Tapping a tab is a tap outside the list, so it closes it.
+        _state.update { it.copy(selectedTier = action.tier, suggestionsDismissed = true) }
         // "Already guessed" depends on the tier's round.
         refreshSuggestions()
     }
@@ -112,7 +119,7 @@ class GameViewModel @Inject constructor(
         _state.update { state ->
             // Editing the text after picking a song un-picks it.
             val selected = state.selectedSong?.takeIf { it.title == text }
-            state.copy(guessText = text, selectedSong = selected)
+            state.copy(guessText = text, selectedSong = selected, suggestionsDismissed = false)
         }
         searchJob?.cancel()
         if (text.trim().length < SongSearcher.MIN_QUERY_LENGTH || _state.value.selectedSong != null) {

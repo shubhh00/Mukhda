@@ -20,11 +20,13 @@ data class GameState(
     val suggestions: List<SuggestionUi> = emptyList(),
     /** All matches for the query, for "5 of N shown". */
     val suggestionsTotal: Int = 0,
+    /** The player closed the list (tap outside, Back) without clearing what they typed. */
+    val suggestionsDismissed: Boolean = false,
     val isPlaying: Boolean = false,
     val isSubmitting: Boolean = false,
 ) {
     val round: RoundUi? get() = rounds[selectedTier]
-    val isDropdownOpen: Boolean get() = suggestions.isNotEmpty() && selectedSong == null
+    val isDropdownOpen: Boolean get() = suggestions.isNotEmpty() && selectedSong == null && !suggestionsDismissed
     val canGuess: Boolean get() = round?.isOpen == true && selectedSong != null && !isSubmitting
     val canSkip: Boolean get() = round?.isOpen == true && !isSubmitting
 }
@@ -66,6 +68,12 @@ sealed interface GameAction {
     data object OnSkipClick : GameAction
     data object OnPlayClick : GameAction
     data object OnRetryClick : GameAction
+    /** ✕ in the guess box. */
+    data object OnClearGuessClick : GameAction
+    /** The guess box got focus: bring back the suggestions for what's typed. */
+    data object OnGuessFieldFocus : GameAction
+    /** Tap outside the list, or Back while it's open. */
+    data object OnDismissSuggestions : GameAction
 }
 
 sealed interface GameEvent {

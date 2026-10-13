@@ -1,5 +1,6 @@
 package com.mukhda.app.ui.game
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -8,10 +9,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -23,9 +27,12 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -33,6 +40,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
@@ -74,6 +82,10 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel()) {
 fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabled: Boolean = true) {
     val colors = MukhdaTheme.colors
     val accent = state.selectedTier.colors()
+    val focusManager = LocalFocusManager.current
+    ClearFocusWhenKeyboardCloses()
+    // Back closes the suggestion list before it leaves the app.
+    BackHandler(enabled = state.isDropdownOpen) { onAction(GameAction.OnDismissSuggestions) }
     // Changes only when a tier is tapped; read at draw time, so the crossfade doesn't recompose.
     val wash = animateColorAsState(
         targetValue = accent.container,
@@ -94,10 +106,20 @@ fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabl
             state.isLoading || round == null -> Loading()
             else -> {
                 TierTabs(selected = state.selectedTier, onTierClick = { onAction(GameAction.OnTierClick(it)) })
-                // While searching, the dropdown takes this space, so the guess bar and the Apple
-                // Music credit below it never get pushed off screen by the keyboard.
+                // The suggestion list floats over the lower part of the round, just above the guess
+                // box. With the keyboard up it fills this space and scrolls; with the keyboard down
+                // the record stays visible above it. A tap anywhere else closes it.
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
+                    RoundContent(state, round, animationsEnabled, onAction)
                     if (state.isDropdownOpen) {
+                        Box(
+                            Modifier
+                                .fillMaxSize()
+                                .clickable(interactionSource = null, indication = null) {
+                                    focusManager.clearFocus()
+                                    onAction(GameAction.OnDismissSuggestions)
+                                },
+                        )
                         SearchDropdown(
                             state = state,
                             onAction = onAction,
@@ -105,8 +127,6 @@ fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabl
                                 .verticalScroll(rememberScrollState())
                                 .padding(start = 16.dp, end = 20.dp, top = 8.dp, bottom = 4.dp),
                         )
-                    } else {
-                        RoundContent(state, round, animationsEnabled, onAction)
                     }
                 }
                 GuessBar(state = state, onAction = onAction, modifier = Modifier.navigationBarsPadding().imePadding())
@@ -116,6 +136,19 @@ fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabl
 }
 
 private const val TIER_CROSSFADE_MS = 300
+
+/** Android keeps focus in a text field after Back closes the keyboard; drop it so the UI follows the keyboard. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ClearFocusWhenKeyboardCloses() {
+    val focusManager = LocalFocusManager.current
+    val imeVisible = WindowInsets.isImeVisible
+    var wasVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(imeVisible) {
+        if (wasVisible && !imeVisible) focusManager.clearFocus()
+        wasVisible = imeVisible
+    }
+}
 
 /** A soft wash of the selected tier's colour from the top of the paper, fading out by mid-screen. */
 private fun Modifier.tierWash(color: () -> Color): Modifier = drawBehind {
