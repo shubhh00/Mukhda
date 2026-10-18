@@ -38,11 +38,12 @@ class StandInShowRepository @Inject constructor(
     private val previewLookup: ItunesPreviewLookup,
 ) : ShowRepository {
 
-    private val date: LocalDate = LocalDate.now(ShowCalendar.IST)
+    private var date: LocalDate = LocalDate.now(ShowCalendar.IST)
     private val rounds = Tier.entries.associateWith { RoundState(it) }.toMutableMap()
     private var previews: Map<Tier, Preview>? = null
 
     override suspend fun todaysShow(): Outcome<Show, DataError> {
+        startNewDayIfMidnightPassed()
         val previews = previews ?: when (val picked = pickPreviews()) {
             is Outcome.Error -> return picked
             is Outcome.Success -> picked.data.also { previews = it }
@@ -56,6 +57,18 @@ class StandInShowRepository @Inject constructor(
                 previews = previews,
             )
         )
+    }
+
+    /**
+     * The app can stay open past midnight IST: a new day gets fresh rounds and new songs, and a try
+     * still carrying yesterday's date is then refused as ROUND_CLOSED, which makes the game reload.
+     */
+    private fun startNewDayIfMidnightPassed() {
+        val today = LocalDate.now(ShowCalendar.IST)
+        if (today == date) return
+        date = today
+        Tier.entries.forEach { rounds[it] = RoundState(it) }
+        previews = null
     }
 
     private suspend fun pickPreviews(): Outcome<Map<Tier, Preview>, DataError> {
@@ -87,6 +100,7 @@ class StandInShowRepository @Inject constructor(
         type: TryType,
         songId: String?,
     ): Outcome<RoundState, TryError> {
+        startNewDayIfMidnightPassed()
         if (date != this.date) return Outcome.Error(TryError.Rule(GameError.ROUND_CLOSED))
         val result = if (type == TryType.SKIP) TryResult.SKIPPED else TryResult.WRONG
         val round = rounds.getValue(tier)

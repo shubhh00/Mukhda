@@ -50,8 +50,11 @@ export async function verifyAll(): Promise<void> {
   for (const source of sources) {
     const files = (await readdir(path.join(paths.candidates, source))).filter((f) => f.endsWith(".json"));
     for (const file of files) {
-      const verified = await verifyFile(itunes, source, file, answers);
       const outDir = path.join(paths.verified, source);
+      const previous = await readFile(path.join(outDir, file), "utf8")
+        .then((text) => JSON.parse(text) as VerifiedFile)
+        .catch(() => undefined);
+      const verified = await verifyFile(itunes, source, file, answers, previous);
       await mkdir(outDir, { recursive: true });
       await writeFile(path.join(outDir, file), JSON.stringify(verified, null, 2));
     }
@@ -64,6 +67,8 @@ async function verifyFile(
   source: string,
   file: string,
   answers: Map<string, ReviewAnswer>,
+  /** The last run's result for this file: a candidate iTunes fails on now keeps its old row. */
+  previous?: VerifiedFile,
 ): Promise<VerifiedFile> {
   const text = await readFile(path.join(paths.candidates, source, file), "utf8");
   let parsed;
@@ -74,8 +79,11 @@ async function verifyFile(
     return { source, file, parseError: (error as Error).message, invalid: 0, rows: [] };
   }
 
+  // Files verified before rows carried an index had no gaps, so their position is the index.
+  const previousRows = new Map((previous?.rows ?? []).map((row, position) => [row.index ?? position, row]));
   const rows: VerifiedRow[] = [];
   let skipped = 0;
+  let kept = 0;
   for (const [i, candidate] of parsed.candidates.entries()) {
     process.stdout.write(`\r${source}/${file}: ${i + 1}/${parsed.candidates.length}   `);
     try {
@@ -83,13 +91,26 @@ async function verifyFile(
       const result = applyReview(await verifyCandidate(itunes, candidate), answer);
       rows.push({ index: i, candidate: result.reviewed ? correctedCandidate(candidate, answer!) : candidate, result });
     } catch (error) {
-      // One song Apple won't answer for mustn't stop the run. It isn't cached, so the next run retries it.
-      skipped++;
-      console.log(`\n  skipped "${candidate.title}" (${(error as Error).message}); retried next run`);
+      // One song Apple won't answer for mustn't stop the run. It isn't cached, so the next run
+      // retries it. Until then it keeps last run's row, if that row is the same song: dropping it
+      // would drop the song from the pool, and from the index built from the pool.
+      const old = previousRows.get(i);
+      if (old && old.candidate.title.toLowerCase() === candidate.title.toLowerCase()) {
+        rows.push({ ...old, index: i });
+        kept++;
+        console.log(`\n  "${candidate.title}": ${(error as Error).message}; kept last run's result, retried next run`);
+      } else {
+        skipped++;
+        console.log(`\n  skipped "${candidate.title}" (${(error as Error).message}); retried next run`);
+      }
     }
   }
   const found = rows.filter((r) => r.result.status === "found").length;
-  const notes = [parsed.invalid ? `${parsed.invalid} invalid` : "", skipped ? `${skipped} skipped` : ""].filter(Boolean);
+  const notes = [
+    parsed.invalid ? `${parsed.invalid} invalid` : "",
+    kept ? `${kept} kept from last run` : "",
+    skipped ? `${skipped} skipped` : "",
+  ].filter(Boolean);
   console.log(`\r${source}/${file}: ${found}/${rows.length} found${notes.length ? `, ${notes.join(", ")}` : ""}`);
   return { source, file, invalid: parsed.invalid, rows };
 }
