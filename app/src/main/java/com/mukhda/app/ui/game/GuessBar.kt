@@ -30,6 +30,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -42,36 +43,53 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mukhda.app.R
+import com.mukhda.app.ui.common.rememberHideKeyboard
 import com.mukhda.app.ui.theme.MukhdaTheme
 import com.mukhda.app.ui.theme.hardShadow
 
 /** Guess input with Skip / Guess. */
 @Composable
-fun GuessBar(state: GameState, onAction: (GameAction) -> Unit, modifier: Modifier = Modifier) {
+fun GuessBar(
+    guessText: String,
+    roundOpen: Boolean,
+    canGuess: Boolean,
+    canSkip: Boolean,
+    onAction: (GameAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MukhdaTheme.colors
+    val hideKeyboard = rememberHideKeyboard()
     Column(
         modifier = modifier
             .fillMaxWidth()
+            // Its own layer: keystrokes and the blinking cursor redraw only the bar, not the screen.
+            .graphicsLayer()
             .background(colors.paper)
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        GuessInput(state, onAction)
+        GuessInput(guessText, roundOpen, canGuess, onAction)
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BarButton(
                 text = stringResource(R.string.skip),
-                enabled = state.canSkip,
+                enabled = canSkip,
                 container = colors.paperLight,
                 content = colors.maroon,
-                onClick = { onAction(GameAction.OnSkipClick) },
+                onClick = {
+                    hideKeyboard()
+                    onAction(GameAction.OnSkipClick)
+                },
                 modifier = Modifier.weight(1f),
             )
             BarButton(
                 text = stringResource(R.string.guess),
-                enabled = state.canGuess,
+                enabled = canGuess,
                 container = colors.saffron,
                 content = colors.ink,
-                onClick = { onAction(GameAction.OnGuessClick) },
+                onClick = {
+                    hideKeyboard()
+                    onAction(GameAction.OnGuessClick)
+                },
                 modifier = Modifier.weight(2f),
             )
         }
@@ -79,27 +97,30 @@ fun GuessBar(state: GameState, onAction: (GameAction) -> Unit, modifier: Modifie
 }
 
 @Composable
-private fun GuessInput(state: GameState, onAction: (GameAction) -> Unit) {
+private fun GuessInput(guessText: String, enabled: Boolean, canGuess: Boolean, onAction: (GameAction) -> Unit) {
     val colors = MukhdaTheme.colors
-    val enabled = state.round?.isOpen == true
+    val hideKeyboard = rememberHideKeyboard()
     // The text lives in the ViewModel; only the cursor is kept here. When the text changes from
     // outside (picking a suggestion, clearing after a guess) the cursor goes to the end.
-    var field by remember { mutableStateOf(TextFieldValue(state.guessText, TextRange(state.guessText.length))) }
-    if (field.text != state.guessText) {
-        field = TextFieldValue(state.guessText, TextRange(state.guessText.length))
+    var field by remember { mutableStateOf(TextFieldValue(guessText, TextRange(guessText.length))) }
+    if (field.text != guessText) {
+        field = TextFieldValue(guessText, TextRange(guessText.length))
     }
     BasicTextField(
         value = field,
         onValueChange = {
             field = it
-            if (it.text != state.guessText) onAction(GameAction.OnGuessTextChange(it.text))
+            if (it.text != guessText) onAction(GameAction.OnGuessTextChange(it.text))
         },
         enabled = enabled,
         singleLine = true,
         textStyle = MukhdaTheme.typography.body.copy(color = colors.ink),
         cursorBrush = SolidColor(colors.pink),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { if (state.canGuess) onAction(GameAction.OnGuessClick) }),
+        keyboardActions = KeyboardActions(onDone = {
+            hideKeyboard()
+            if (canGuess) onAction(GameAction.OnGuessClick)
+        }),
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { if (it.isFocused) onAction(GameAction.OnGuessFieldFocus) }
@@ -110,7 +131,7 @@ private fun GuessInput(state: GameState, onAction: (GameAction) -> Unit) {
         decorationBox = { field ->
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(modifier = Modifier.weight(1f)) {
-                    if (state.guessText.isEmpty()) {
+                    if (guessText.isEmpty()) {
                         Text(
                             text = stringResource(if (enabled) R.string.guess_hint else R.string.guess_closed),
                             style = MukhdaTheme.typography.body,
@@ -119,7 +140,7 @@ private fun GuessInput(state: GameState, onAction: (GameAction) -> Unit) {
                     }
                     field()
                 }
-                if (enabled && state.guessText.isNotEmpty()) {
+                if (enabled && guessText.isNotEmpty()) {
                     ClearButton(onClick = { onAction(GameAction.OnClearGuessClick) })
                 }
             }
@@ -151,7 +172,13 @@ private fun ClearButton(onClick: () -> Unit) {
 
 /** Up to five matches for the guess box, with the replay control kept in reach while searching. */
 @Composable
-fun SearchDropdown(state: GameState, onAction: (GameAction) -> Unit, modifier: Modifier = Modifier) {
+fun SearchDropdown(
+    suggestions: List<SuggestionUi>,
+    totalMatches: Int,
+    isPlaying: Boolean,
+    onAction: (GameAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MukhdaTheme.colors
     val type = MukhdaTheme.typography
     Column(
@@ -170,8 +197,8 @@ fun SearchDropdown(state: GameState, onAction: (GameAction) -> Unit, modifier: M
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
-                text = if (state.suggestionsTotal > state.suggestions.size) {
-                    stringResource(R.string.more_results, state.suggestions.size, state.suggestionsTotal)
+                text = if (totalMatches > suggestions.size) {
+                    stringResource(R.string.more_results, suggestions.size, totalMatches)
                 } else {
                     stringResource(R.string.pick_a_song)
                 },
@@ -180,7 +207,7 @@ fun SearchDropdown(state: GameState, onAction: (GameAction) -> Unit, modifier: M
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = stringResource(if (state.isPlaying) R.string.stop_clip else R.string.replay_clip),
+                text = stringResource(if (isPlaying) R.string.stop_clip else R.string.replay_clip),
                 style = type.label,
                 color = colors.saffron,
                 modifier = Modifier
@@ -188,7 +215,7 @@ fun SearchDropdown(state: GameState, onAction: (GameAction) -> Unit, modifier: M
                     .padding(horizontal = 4.dp, vertical = 4.dp),
             )
         }
-        state.suggestions.forEachIndexed { i, suggestion ->
+        suggestions.forEachIndexed { i, suggestion ->
             if (i > 0) HorizontalDivider(color = colors.maroon.copy(alpha = 0.2f))
             SuggestionRow(suggestion, onClick = { onAction(GameAction.OnSuggestionClick(suggestion.song.songId)) })
         }
