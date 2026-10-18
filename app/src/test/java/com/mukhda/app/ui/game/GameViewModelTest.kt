@@ -16,6 +16,8 @@ import com.mukhda.domain.DataError
 import com.mukhda.domain.GameError
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
+import com.mukhda.domain.model.Verdict
+import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
 import kotlinx.coroutines.Dispatchers
@@ -291,6 +293,74 @@ class GameViewModelTest {
         repeat(5) { vm.onAction(GameAction.OnSkipClick) }
         // Four skips each set up the next clip; the fifth closes the round.
         assertThat(player.speakerWakes).isEqualTo(afterLoad + 4)
+    }
+
+    @Test
+    fun `a lost round reveals the song, its verdict and the next tier`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        val round = vm.state.value.round!!
+        assertThat(round.isOpen).isFalse()
+        assertThat(round.verdict).isEqualTo(Verdict.DISASTER)
+        assertThat(round.reveal?.title).isEqualTo("Kal Ho Naa Ho")
+        assertThat(round.reveal?.detail).isEqualTo("Kal Ho Naa Ho · 2003")
+        assertThat(vm.state.value.nextTier).isEqualTo(Tier.MEDIUM)
+    }
+
+    @Test
+    fun `an open round never shows a reveal, even if one arrives`() = runTest(dispatcher) {
+        show.rounds = show.rounds + (Tier.EASY to RoundState(Tier.EASY, reveal = show.reveal))
+        val vm = viewModel()
+        assertThat(vm.state.value.round!!.reveal).isNull()
+    }
+
+    @Test
+    fun `won rounds keep the step they were solved on`() = runTest(dispatcher) {
+        show.judge = { TryResult.CORRECT }
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnSuggestionClick("s7"))
+        vm.onAction(GameAction.OnGuessClick)
+        val round = vm.state.value.round!!
+        assertThat(round.verdict).isEqualTo(Verdict.SUPERHIT)
+        assertThat(round.solvedAtStep).isEqualTo(1)
+    }
+
+    @Test
+    fun `next tier skips rounds already started, and moves there`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnTierClick(Tier.MEDIUM))
+        vm.onAction(GameAction.OnSkipClick)
+        vm.onAction(GameAction.OnTierClick(Tier.EASY))
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        assertThat(vm.state.value.nextTier).isEqualTo(Tier.HARD)
+        vm.onAction(GameAction.OnNextTierClick)
+        assertThat(vm.state.value.selectedTier).isEqualTo(Tier.HARD)
+    }
+
+    @Test
+    fun `once a round is over, play gives the whole song`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnPlayClick)
+        assertThat(player.played.single().second).isNull()
+    }
+
+    @Test
+    fun `the ticket opens and closes`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnShareTicketClick)
+        assertThat(vm.state.value.isTicketOpen).isTrue()
+        vm.onAction(GameAction.OnTicketClose)
+        assertThat(vm.state.value.isTicketOpen).isFalse()
+    }
+
+    @Test
+    fun `the countdown runs to the server's end of show`() = runTest(dispatcher) {
+        val vm = viewModel()
+        assertThat(vm.state.value.endsAtEpochMs).isEqualTo(java.time.Instant.parse("2026-10-13T18:30:00Z").toEpochMilli())
     }
 
     @Test

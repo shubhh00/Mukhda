@@ -262,7 +262,7 @@ private fun SuggestionRow(suggestion: SuggestionUi, onClick: () -> Unit) {
 
 /** Skip is outlined in ink; Guess is filled red with marigold text. */
 @Composable
-private fun BarButton(
+internal fun BarButton(
     text: String,
     enabled: Boolean,
     filled: Boolean,

@@ -3,6 +3,7 @@ package com.mukhda.app.ui.game
 import androidx.compose.runtime.Stable
 import com.mukhda.app.ui.common.UiText
 import com.mukhda.domain.model.Tier
+import com.mukhda.domain.model.Verdict
 
 @Stable
 data class GameState(
@@ -24,11 +25,23 @@ data class GameState(
     val suggestionsDismissed: Boolean = false,
     val isPlaying: Boolean = false,
     val isSubmitting: Boolean = false,
+    /** When the show closes (midnight IST, from the server), for the "Next show in" countdown. */
+    val endsAtEpochMs: Long = 0,
+    /** The shareable ticket is open over the screen. */
+    val isTicketOpen: Boolean = false,
 ) {
     val round: RoundUi? get() = rounds[selectedTier]
     val isDropdownOpen: Boolean get() = suggestions.isNotEmpty() && selectedSong == null && !suggestionsDismissed
     val canGuess: Boolean get() = round?.isOpen == true && selectedSong != null && !isSubmitting
     val canSkip: Boolean get() = round?.isOpen == true && !isSubmitting
+
+    /** The tier to suggest after this one: the next not yet started, else the next still open. */
+    val nextTier: Tier?
+        get() {
+            val order = Tier.entries.let { all -> all.drop(selectedTier.ordinal + 1) + all.take(selectedTier.ordinal) }
+            return order.firstOrNull { rounds[it]?.let { r -> r.isOpen && !r.isStarted } == true }
+                ?: order.firstOrNull { rounds[it]?.isOpen == true }
+        }
 }
 
 data class RoundUi(
@@ -37,6 +50,22 @@ data class RoundUi(
     val slots: List<TrySlotUi>,
     val isOpen: Boolean,
     val isWon: Boolean,
+    /** Set once the round is won or lost. */
+    val verdict: Verdict? = null,
+    /** The clip step it was solved on, for "Got it on the 1-second clip". */
+    val solvedAtStep: Int? = null,
+    /** The song, once the server reveals it. */
+    val reveal: RevealUi? = null,
+) {
+    val isStarted: Boolean get() = slots.any { it is TrySlotUi.Used }
+}
+
+data class RevealUi(
+    val title: String,
+    /** "Film · Year". */
+    val detail: String,
+    val artworkUrl: String?,
+    val appleMusicUrl: String?,
 )
 
 sealed interface TrySlotUi {
@@ -74,6 +103,11 @@ sealed interface GameAction {
     data object OnGuessFieldFocus : GameAction
     /** Tap outside the list, or Back while it's open. */
     data object OnDismissSuggestions : GameAction
+    /** "Next: Medium" on a finished round. */
+    data object OnNextTierClick : GameAction
+    data object OnShareTicketClick : GameAction
+    /** Back, or the close button, on the ticket. */
+    data object OnTicketClose : GameAction
 }
 
 sealed interface GameEvent {

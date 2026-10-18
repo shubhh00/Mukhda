@@ -57,6 +57,9 @@ data class MukhdaColors(
     val tierExpert: Color = Color(0xFFD63E7A),
     val tierLegend: Color = Color(0xFF1B1A17),
 
+    /** The ticket's own paper, a shade lighter than the page. */
+    val ticketPaper: Color = Color(0xFFFBF2DD),
+
     // Try squares on the shared ticket.
     val ticketWrong: Color = Color(0xFFC8261E),
     val ticketRightFilm: Color = Color(0xFFE09A12),

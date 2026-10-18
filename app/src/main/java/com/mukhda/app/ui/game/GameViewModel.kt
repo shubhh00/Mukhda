@@ -73,6 +73,9 @@ class GameViewModel @Inject constructor(
             }
             GameAction.OnGuessFieldFocus -> _state.update { it.copy(suggestionsDismissed = false) }
             GameAction.OnDismissSuggestions -> _state.update { it.copy(suggestionsDismissed = true) }
+            GameAction.OnNextTierClick -> _state.value.nextTier?.let { selectTier(GameAction.OnTierClick(it)) }
+            GameAction.OnShareTicketClick -> _state.update { it.copy(isTicketOpen = true) }
+            GameAction.OnTicketClose -> _state.update { it.copy(isTicketOpen = false) }
         }
     }
 
@@ -109,6 +112,7 @@ class GameViewModel @Inject constructor(
                 loadError = null,
                 showNo = show.showNo,
                 dateLabel = show.date.toDateLabel(),
+                endsAtEpochMs = show.endsAt.toEpochMilli(),
                 rounds = show.rounds.mapValues { (_, round) -> round.toRoundUi(songs) },
             )
         }
@@ -225,14 +229,15 @@ class GameViewModel @Inject constructor(
             return
         }
         val tier = _state.value.selectedTier
-        val step = _state.value.round?.currentStep ?: return
+        val round = _state.value.round ?: return
         val preview = show?.previews?.get(tier) ?: return
         if (clipPlayer.isVolumeLow()) {
             viewModelScope.launch { _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.volume_low))) }
         }
         _state.update { it.copy(isPlaying = true) }
         playJob = viewModelScope.launch {
-            clipPlayer.play(preview, ClipLadder.clipLengthMs(step))
+            // Once the round is over, the player knows the song: play all of it.
+            clipPlayer.play(preview, if (round.isOpen) ClipLadder.clipLengthMs(round.currentStep) else null)
                 .onFailure { _events.send(GameEvent.ShowMessage(it.toUiText())) }
             _state.update { it.copy(isPlaying = false) }
         }

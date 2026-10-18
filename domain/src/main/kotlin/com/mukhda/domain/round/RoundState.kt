@@ -17,16 +17,33 @@ data class TryRecord(
 )
 
 /**
+ * The answer, as the server reveals it once a round is won or lost. Never present for an open
+ * round, so nothing on the client can give the song away early.
+ */
+data class SongReveal(
+    val songId: String,
+    val title: String,
+    val filmTitle: String,
+    val year: Int,
+    /** Soundtrack cover, usually the film's poster. */
+    val artworkUrl: String?,
+    /** The track on Apple Music, for "Listen on Apple Music". */
+    val appleMusicUrl: String?,
+)
+
+/**
  * One player's round for one tier on one show day.
  *
  * The server judges every try; this applies the judged result so the client can render
- * state and stay consistent with the server's rules. It never knows the answer.
+ * state and stay consistent with the server's rules. It never knows the answer while the round
+ * is open: [reveal] arrives from the server only once the round is over.
  */
 data class RoundState(
     val tier: Tier,
     val tries: List<TryRecord> = emptyList(),
     val status: RoundStatus = RoundStatus.OPEN,
     val solvedAtStep: Int? = null,
+    val reveal: SongReveal? = null,
 ) {
     val triesUsed: Int get() = tries.size
     val triesLeft: Int get() = ClipLadder.MAX_TRIES - triesUsed

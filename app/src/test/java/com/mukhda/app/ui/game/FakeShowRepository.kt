@@ -7,6 +7,7 @@ import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
+import com.mukhda.domain.round.SongReveal
 import com.mukhda.domain.round.TryRecord
 import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
@@ -25,6 +26,7 @@ class FakeShowRepository : ShowRepository {
     val requestIds = mutableListOf<String>()
     var loads = 0
         private set
+    val reveal = SongReveal("s7", "Kal Ho Naa Ho", "Kal Ho Naa Ho", 2003, "https://example.com/art.jpg", "https://music.apple.com/x")
 
     override suspend fun todaysShow(): Outcome<Show, DataError> {
         loads++
@@ -48,7 +50,9 @@ class FakeShowRepository : ShowRepository {
         }
         val result = if (type == TryType.SKIP) TryResult.SKIPPED else judge(songId!!)
         val applied = rounds.getValue(tier).apply(TryRecord(requestId, type, songId, result))
-        val round = (applied as Outcome.Success).data
+        val judged = (applied as Outcome.Success).data
+        // Like the server: the song is revealed once the round is over, never before.
+        val round = if (judged.status.isFinished) judged.copy(reveal = reveal) else judged
         rounds = rounds + (tier to round)
         return Outcome.Success(round)
     }

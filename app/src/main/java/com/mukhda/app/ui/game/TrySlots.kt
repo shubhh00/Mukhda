@@ -14,16 +14,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaTheme
 import com.mukhda.app.ui.theme.dashedBorder
+import com.mukhda.app.ui.theme.drawBehindKeyed
 
 /** Every slot is the same height, so the stage above doesn't shrink as tries fill in. */
 private val SlotHeight = 40.dp
+/** The numeral's stub on the left of each slot, ruled off from the rest like a ticket's. */
+private val StubWidth = 40.dp
 
 /** Five try slots, numbered I–V: used ones show the guess and a stamp; unused ones are dashed. */
 @Composable
@@ -49,7 +56,8 @@ private fun UsedSlot(slot: TrySlotUi.Used) {
             .heightIn(min = SlotHeight)
             .background(background)
             .border(1.dp, colors.rule)
-            .padding(horizontal = 12.dp, vertical = 3.dp),
+            .stubLine(colors.rule, dashed = false)
+            .padding(end = 12.dp, top = 3.dp, bottom = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -100,7 +108,7 @@ private fun EmptySlot(number: Int) {
             .fillMaxWidth()
             .heightIn(min = SlotHeight)
             .dashedBorder(MukhdaTheme.colors.dashed)
-            .padding(horizontal = 12.dp),
+            .stubLine(MukhdaTheme.colors.dashed, dashed = true),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Numeral(number, used = false)
@@ -114,9 +122,24 @@ private fun Numeral(number: Int, used: Boolean) {
         text = romanNumeral(number),
         style = MukhdaTheme.typography.numeral,
         color = if (used) colors.faint else colors.dashed,
-        modifier = Modifier.width(22.dp),
+        textAlign = TextAlign.Center,
+        modifier = Modifier.width(StubWidth),
     )
 }
+
+/** The rule between the numeral's stub and the rest of the slot, full height. */
+private fun Modifier.stubLine(color: Color, dashed: Boolean): Modifier =
+    drawBehindKeyed(color to dashed) {
+        val x = StubWidth.toPx()
+        val dash = 5.dp.toPx()
+        drawLine(
+            color = color,
+            start = Offset(x, 0f),
+            end = Offset(x, size.height),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = if (dashed) PathEffect.dashPathEffect(floatArrayOf(dash, dash)) else null,
+        )
+    }
 
 private fun romanNumeral(number: Int): String = when (number) {
     1 -> "I"

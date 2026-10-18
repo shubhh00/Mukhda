@@ -11,6 +11,7 @@ import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.ShowCalendar
+import com.mukhda.domain.round.SongReveal
 import com.mukhda.domain.round.TryRecord
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.show.Show
@@ -27,7 +28,7 @@ import kotlin.random.Random
  * a server. Each day it plays five songs picked at random from the bundled search index (seeded by
  * the date, so they hold for the day), with previews from Apple's lookup API. It never compares a
  * guess with them, since answers may not be judged on the client: every guess is WRONG and every
- * skip SKIPPED. Rounds live in memory only, so a restart gives a fresh show, which keeps testing
+ * skip SKIPPED. Like the server, it reveals the song once a round is over. Rounds live in memory only, so a restart gives a fresh show, which keeps testing
  * simple. The show date comes from the phone here only because there's no server yet; the real
  * repository takes it from `getShow()`.
  */
@@ -35,18 +36,21 @@ import kotlin.random.Random
 class StandInShowRepository @Inject constructor(
     private val songIndex: SongIndexDataSource,
     private val searchIndexDao: SearchIndexDao,
-    private val previewLookup: ItunesPreviewLookup,
+    private val trackLookup: ItunesTrackLookup,
 ) : ShowRepository {
 
     private var date: LocalDate = LocalDate.now(ShowCalendar.IST)
     private val rounds = Tier.entries.associateWith { RoundState(it) }.toMutableMap()
-    private var previews: Map<Tier, Preview>? = null
+    /** Today's song per tier, picked on first load. */
+    private var picks: Map<Tier, Pick>? = null
+
+    private data class Pick(val songId: String, val track: ItunesTrack)
 
     override suspend fun todaysShow(): Outcome<Show, DataError> {
         startNewDayIfMidnightPassed()
-        val previews = previews ?: when (val picked = pickPreviews()) {
+        val picks = picks ?: when (val picked = pickSongs()) {
             is Outcome.Error -> return picked
-            is Outcome.Success -> picked.data.also { previews = it }
+            is Outcome.Success -> picked.data.also { picks = it }
         }
         return Outcome.Success(
             Show(
@@ -54,7 +58,7 @@ class StandInShowRepository @Inject constructor(
                 showNo = 1,
                 endsAt = date.plusDays(1).atTime(LocalTime.MIDNIGHT).atZone(ShowCalendar.IST).toInstant(),
                 rounds = rounds.toMap(),
-                previews = previews,
+                previews = picks.mapValues { (_, pick) -> Preview(pick.track.previewUrl) },
             )
         )
     }
@@ -68,10 +72,10 @@ class StandInShowRepository @Inject constructor(
         if (today == date) return
         date = today
         Tier.entries.forEach { rounds[it] = RoundState(it) }
-        previews = null
+        picks = null
     }
 
-    private suspend fun pickPreviews(): Outcome<Map<Tier, Preview>, DataError> {
+    private suspend fun pickSongs(): Outcome<Map<Tier, Pick>, DataError> {
         if (songIndex.prepare() is Outcome.Error) return Outcome.Error(DataError.Local.UNKNOWN)
         val count = searchIndexDao.count()
         if (count == 0) return Outcome.Error(DataError.Local.NOT_FOUND)
@@ -80,14 +84,14 @@ class StandInShowRepository @Inject constructor(
         val trackIds = List(Tier.entries.size * 2) { random.nextInt(count) }
             .distinct()
             .mapNotNull { searchIndexDao.songIdAt(it)?.removePrefix(SONG_ID_PREFIX)?.toLongOrNull() }
-        return when (val lookup = previewLookup.previewUrls(trackIds)) {
+        return when (val lookup = trackLookup.tracks(trackIds)) {
             is Outcome.Error -> lookup
             is Outcome.Success -> {
-                val urls = trackIds.mapNotNull { lookup.data[it] }
-                if (urls.size < Tier.entries.size) {
+                val found = trackIds.mapNotNull { id -> lookup.data[id]?.let { Pick(SONG_ID_PREFIX + id, it) } }
+                if (found.size < Tier.entries.size) {
                     Outcome.Error(DataError.Network.NOT_FOUND)
                 } else {
-                    Outcome.Success(Tier.entries.zip(urls) { tier, url -> tier to Preview(url) }.toMap())
+                    Outcome.Success(Tier.entries.zip(found).toMap())
                 }
             }
         }
@@ -106,8 +110,9 @@ class StandInShowRepository @Inject constructor(
         val round = rounds.getValue(tier)
         return when (val applied = round.apply(TryRecord(requestId, type, songId, result))) {
             is Outcome.Success -> {
-                rounds[tier] = applied.data
-                Outcome.Success(applied.data)
+                val judged = if (applied.data.status.isFinished) applied.data.copy(reveal = reveal(tier)) else applied.data
+                rounds[tier] = judged
+                Outcome.Success(judged)
             }
             is Outcome.Error -> Outcome.Error(
                 when (applied.error) {
@@ -117,6 +122,20 @@ class StandInShowRepository @Inject constructor(
                 }
             )
         }
+    }
+
+    /** The tier's song, as the server reveals it when a round ends. */
+    private suspend fun reveal(tier: Tier): SongReveal? {
+        val pick = picks?.get(tier) ?: return null
+        val song = searchIndexDao.byIds(listOf(pick.songId)).firstOrNull() ?: return null
+        return SongReveal(
+            songId = song.songId,
+            title = song.title,
+            filmTitle = song.filmTitle,
+            year = song.year,
+            artworkUrl = pick.track.artworkUrl,
+            appleMusicUrl = pick.track.appleMusicUrl,
+        )
     }
 
     private companion object {
