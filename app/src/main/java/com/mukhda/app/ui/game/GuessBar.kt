@@ -26,9 +26,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
@@ -37,6 +39,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.TextFieldValue
@@ -45,7 +48,6 @@ import androidx.compose.ui.unit.dp
 import com.mukhda.app.R
 import com.mukhda.app.ui.common.rememberHideKeyboard
 import com.mukhda.app.ui.theme.MukhdaTheme
-import com.mukhda.app.ui.theme.hardShadow
 
 /** Guess input with Skip / Guess. */
 @Composable
@@ -64,17 +66,16 @@ fun GuessBar(
             .fillMaxWidth()
             // Its own layer: keystrokes and the blinking cursor redraw only the bar, not the screen.
             .graphicsLayer()
-            .background(colors.paper)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         GuessInput(guessText, roundOpen, canGuess, onAction)
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             BarButton(
                 text = stringResource(R.string.skip),
                 enabled = canSkip,
-                container = colors.paperLight,
-                content = colors.maroon,
+                filled = false,
                 onClick = {
                     hideKeyboard()
                     onAction(GameAction.OnSkipClick)
@@ -84,8 +85,7 @@ fun GuessBar(
             BarButton(
                 text = stringResource(R.string.guess),
                 enabled = canGuess,
-                container = colors.saffron,
-                content = colors.ink,
+                filled = true,
                 onClick = {
                     hideKeyboard()
                     onAction(GameAction.OnGuessClick)
@@ -93,6 +93,12 @@ fun GuessBar(
                 modifier = Modifier.weight(2f),
             )
         }
+        // Apple requires the credit wherever previews play; it sits under the controls.
+        Text(
+            text = stringResource(R.string.apple_music_credit),
+            style = MukhdaTheme.typography.caption,
+            color = colors.faint,
+        )
     }
 }
 
@@ -115,7 +121,7 @@ private fun GuessInput(guessText: String, enabled: Boolean, canGuess: Boolean, o
         enabled = enabled,
         singleLine = true,
         textStyle = MukhdaTheme.typography.body.copy(color = colors.ink),
-        cursorBrush = SolidColor(colors.pink),
+        cursorBrush = SolidColor(colors.red),
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
         keyboardActions = KeyboardActions(onDone = {
             hideKeyboard()
@@ -124,18 +130,18 @@ private fun GuessInput(guessText: String, enabled: Boolean, canGuess: Boolean, o
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { if (it.isFocused) onAction(GameAction.OnGuessFieldFocus) }
-            .hardShadow(colors.maroon, 3.dp)
-            .background(colors.paperLight)
-            .border(2.dp, colors.maroon)
-            .padding(horizontal = 12.dp, vertical = 12.dp),
+            .height(46.dp)
+            .background(colors.input)
+            .border(1.5.dp, colors.ink)
+            .padding(start = 14.dp, end = 6.dp),
         decorationBox = { field ->
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                     if (guessText.isEmpty()) {
                         Text(
                             text = stringResource(if (enabled) R.string.guess_hint else R.string.guess_closed),
                             style = MukhdaTheme.typography.body,
-                            color = colors.muted,
+                            color = colors.faint,
                         )
                     }
                     field()
@@ -151,12 +157,12 @@ private fun GuessInput(guessText: String, enabled: Boolean, canGuess: Boolean, o
 /** ✕ inside the guess box: clears what's typed and keeps the keyboard up. */
 @Composable
 private fun ClearButton(onClick: () -> Unit) {
-    val color = MukhdaTheme.colors.maroon
+    val color = MukhdaTheme.colors.ink
     val label = stringResource(R.string.cd_clear_guess)
     Box(
         modifier = Modifier
-            .padding(start = 8.dp)
-            .size(24.dp)
+            .padding(start = 4.dp)
+            .size(40.dp)
             .clip(CircleShape)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { contentDescription = label },
@@ -184,16 +190,16 @@ fun SearchDropdown(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .hardShadow(colors.pink, 4.dp)
-            .background(colors.paperLight)
-            .border(2.dp, colors.maroon),
+            .shadow(10.dp, RectangleShape, ambientColor = colors.ink, spotColor = colors.ink)
+            .background(colors.card)
+            .border(1.5.dp, colors.ink),
     ) {
         // Keep the clip within reach while searching.
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.maroon)
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .background(colors.ink)
+                .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -202,21 +208,21 @@ fun SearchDropdown(
                 } else {
                     stringResource(R.string.pick_a_song)
                 },
-                style = type.label,
-                color = colors.paperLight,
+                style = type.caption,
+                color = colors.ladderEmpty,
                 modifier = Modifier.weight(1f),
             )
             Text(
                 text = stringResource(if (isPlaying) R.string.stop_clip else R.string.replay_clip),
-                style = type.label,
-                color = colors.saffron,
+                style = type.caption.copy(fontWeight = FontWeight.SemiBold),
+                color = colors.marigold,
                 modifier = Modifier
                     .clickable(role = Role.Button) { onAction(GameAction.OnPlayClick) }
-                    .padding(horizontal = 4.dp, vertical = 4.dp),
+                    .padding(horizontal = 8.dp, vertical = 10.dp),
             )
         }
         suggestions.forEachIndexed { i, suggestion ->
-            if (i > 0) HorizontalDivider(color = colors.maroon.copy(alpha = 0.2f))
+            if (i > 0) HorizontalDivider(color = colors.rule)
             SuggestionRow(suggestion, onClick = { onAction(GameAction.OnSuggestionClick(suggestion.song.songId)) })
         }
     }
@@ -231,7 +237,7 @@ private fun SuggestionRow(suggestion: SuggestionUi, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = !suggestion.alreadyGuessed, role = Role.Button, onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = 14.dp, vertical = 9.dp),
     ) {
         Text(
             suggestion.song.title,
@@ -246,7 +252,7 @@ private fun SuggestionRow(suggestion: SuggestionUi, onClick: () -> Unit) {
             } else {
                 suggestion.song.detail
             },
-            style = type.body,
+            style = type.bodySmall,
             color = colors.muted.copy(alpha = alpha),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -254,27 +260,31 @@ private fun SuggestionRow(suggestion: SuggestionUi, onClick: () -> Unit) {
     }
 }
 
+/** Skip is outlined in ink; Guess is filled red with marigold text. */
 @Composable
 private fun BarButton(
     text: String,
     enabled: Boolean,
-    container: Color,
-    content: Color,
+    filled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MukhdaTheme.colors
-    val alpha = if (enabled) 1f else 0.4f
+    val (container, content, outline) = when {
+        filled && enabled -> Triple(colors.buttonRed, colors.marigold, colors.buttonRed)
+        filled -> Triple(colors.disabled, colors.onDisabled, colors.disabled)
+        enabled -> Triple(Color.Transparent, colors.ink, colors.ink)
+        else -> Triple(Color.Transparent, colors.faint, colors.rule)
+    }
     Box(
         modifier = modifier
-            .height(48.dp)
-            .then(if (enabled) Modifier.hardShadow(colors.maroon, 3.dp) else Modifier)
-            .background(container.copy(alpha = alpha))
-            .border(2.dp, colors.maroon.copy(alpha = alpha))
+            .height(44.dp)
+            .background(container)
+            .border(1.5.dp, outline)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = text },
         contentAlignment = Alignment.Center,
     ) {
-        Text(text.uppercase(), style = MukhdaTheme.typography.label, color = content.copy(alpha = alpha))
+        Text(text.uppercase(), style = MukhdaTheme.typography.button, color = content)
     }
 }

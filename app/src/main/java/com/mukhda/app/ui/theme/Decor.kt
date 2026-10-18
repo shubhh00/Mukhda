@@ -1,40 +1,36 @@
 package com.mukhda.app.ui.theme
 
+import android.graphics.Bitmap
 import android.provider.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.ImageShader
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.drawOutline
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-
-/** The Poster look's solid, unblurred drop shadow, offset down and right. */
-fun Modifier.hardShadow(color: Color, offset: Dp = 4.dp, shape: Shape = RectangleShape): Modifier =
-    drawBehindKeyed(Triple(color, offset, shape)) {
-        val px = offset.toPx()
-        translate(px, px) { drawOutline(shape.createOutline(size, layoutDirection, this), color) }
-    }
+import kotlin.math.max
+import kotlin.random.Random
 
 /** A dashed outline, for empty try slots. */
-fun Modifier.dashedBorder(color: Color, width: Dp = 2.dp, dash: Dp = 6.dp): Modifier =
+fun Modifier.dashedBorder(color: Color, width: Dp = 1.dp, dash: Dp = 5.dp): Modifier =
     drawBehindKeyed(Triple(color, width, dash)) {
         val stroke = width.toPx()
         drawRect(
@@ -70,36 +66,76 @@ private class KeyedDrawNode(var onDraw: DrawScope.() -> Unit) : Modifier.Node(),
 }
 
 /**
- * Paper halftone: small pink dots on a 9 px grid at about 10% alpha. One 9 px tile with a single
- * dot is repeated by the GPU, which is far cheaper than drawing every dot. The tile is built once
- * per colour, not on every recomposition.
+ * Newsprint: the paper colour, lighter in the upper middle and darker at the edges, with a fine
+ * grain and, optionally, a halftone dot screen in [dots]. The grain and dots are small tiles
+ * repeated by the GPU; tiles and the vignette are built once per colour and size, not per frame.
  */
-fun Modifier.halftone(color: Color): Modifier = this then HalftoneElement(color)
+fun Modifier.paper(colors: MukhdaColors, dots: Color? = null): Modifier =
+    this then PaperElement(colors.paperGlow, colors.paper, colors.paperEdge, dots)
 
-private data class HalftoneElement(val color: Color) : ModifierNodeElement<HalftoneNode>() {
-    override fun create() = HalftoneNode(color)
-    override fun update(node: HalftoneNode) {
-        node.color = color
-        node.brush = null
+private data class PaperElement(
+    val glow: Color,
+    val base: Color,
+    val edge: Color,
+    val dots: Color?,
+) : ModifierNodeElement<PaperNode>() {
+    override fun create() = PaperNode(glow, base, edge, dots)
+    override fun update(node: PaperNode) {
+        node.glow = glow
+        node.base = base
+        node.edge = edge
+        node.dots = dots
+        node.vignette = null
+        node.halftone = null
     }
 }
 
-private class HalftoneNode(var color: Color) : Modifier.Node(), DrawModifierNode {
-    var brush: ShaderBrush? = null
+private class PaperNode(var glow: Color, var base: Color, var edge: Color, var dots: Color?) :
+    Modifier.Node(), DrawModifierNode {
+    var vignette: Brush? = null
+    var halftone: ShaderBrush? = null
+    private var vignetteSize = Size.Zero
+    private var grain: ShaderBrush? = null
 
     override fun ContentDrawScope.draw() {
-        drawRect(brush ?: halftoneBrush(color).also { brush = it })
+        if (vignette == null || vignetteSize != size) {
+            vignetteSize = size
+            vignette = Brush.radialGradient(
+                0f to glow,
+                0.55f to base,
+                1f to edge,
+                center = Offset(size.width / 2, size.height * 0.35f),
+                radius = max(size.width, size.height) * 0.8f,
+            )
+        }
+        drawRect(vignette!!)
+        drawRect(grain ?: grainBrush().also { grain = it })
+        dots?.let { drawRect(halftone ?: halftoneBrush(it).also { brush -> halftone = brush }) }
         drawContent()
     }
 }
 
+/** Brown specks at a few percent alpha, fixed seed so the paper looks the same every launch. */
+private fun grainBrush(): ShaderBrush {
+    val side = 128
+    val random = Random(57)
+    val speck = Color(0xFF735433).toArgb() and 0x00FFFFFF
+    val pixels = IntArray(side * side) {
+        val alpha = if (random.nextInt(9) == 0) random.nextInt(18, 40) else random.nextInt(0, 12)
+        (alpha shl 24) or speck
+    }
+    val tile = Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888).asImageBitmap()
+    return ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
+}
+
+/** One dot per 9 px tile, as on a cheap offset print. */
 private fun halftoneBrush(color: Color): ShaderBrush {
     val grid = 9
     val tile = ImageBitmap(grid, grid)
     Canvas(tile).drawCircle(
         center = Offset(grid / 2f, grid / 2f),
         radius = 1.1f,
-        paint = Paint().apply { this.color = color.copy(alpha = 0.10f) },
+        paint = Paint().apply { this.color = color },
     )
     return ShaderBrush(ImageShader(tile, TileMode.Repeated, TileMode.Repeated))
 }

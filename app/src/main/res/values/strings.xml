@@ -2,7 +2,6 @@
     <string name="app_name">Mukhda</string>
 
     <string name="wordmark" translatable="false">MUKHDA</string>
-    <string name="wordmark_devanagari" translatable="false">मुखड़ा</string>
 
     <string name="tier_easy">Easy</string>
     <string name="tier_medium">Medium</string>
@@ -13,12 +12,16 @@
     <!-- Game screen -->
     <string name="show_line">SHOW NO. %1$d · %2$s</string>
     <string name="streak_badge">%1$d HOUSEFULL</string>
-    <string name="clip_label">%1$s · clip %2$d of %3$d</string>
+    <string name="clip_of">Clip %1$d of %2$d</string>
     <string name="clip_0">0.1 sec</string>
     <string name="clip_1">0.5 sec</string>
     <string name="clip_2">1 sec</string>
     <string name="clip_3">2 sec</string>
     <string name="clip_full">Full</string>
+    <!-- Under the two narrowest ladder bars, where "0.1 sec" doesn't fit. -->
+    <string name="ladder_0">0.1</string>
+    <string name="ladder_1">0.5</string>
+    <string name="now_showing">Now showing</string>
     <string name="cd_play_clip">Play clip</string>
     <string name="cd_stop_clip">Stop clip</string>
 

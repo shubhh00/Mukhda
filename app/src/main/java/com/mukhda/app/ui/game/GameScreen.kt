@@ -1,16 +1,15 @@
 package com.mukhda.app.ui.game
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -20,8 +19,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -30,7 +31,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -38,9 +38,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -49,10 +48,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mukhda.app.R
@@ -61,8 +60,7 @@ import com.mukhda.app.ui.common.UiText
 import com.mukhda.app.ui.common.rememberHideKeyboard
 import com.mukhda.app.ui.theme.MukhdaTheme
 import com.mukhda.app.ui.theme.drawBehindKeyed
-import com.mukhda.app.ui.theme.halftone
-import com.mukhda.app.ui.theme.hardShadow
+import com.mukhda.app.ui.theme.paper
 import com.mukhda.app.ui.theme.rememberAnimationsEnabled
 import com.mukhda.domain.model.Tier
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -93,28 +91,19 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel()) {
 @Composable
 fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabled: Boolean = true) {
     val colors = MukhdaTheme.colors
-    val accent = state.selectedTier.colors()
     val hideKeyboard = rememberHideKeyboard()
     // Height of the guess bar (with the keyboard's padding); taps there keep the keyboard up.
     val barHeight = remember { mutableIntStateOf(0) }
     ClearFocusWhenKeyboardCloses()
     // Back closes the suggestion list before it leaves the app.
     BackHandler(enabled = state.isDropdownOpen) { onAction(GameAction.OnDismissSuggestions) }
-    // Changes only when a tier is tapped; read at draw time, so the crossfade doesn't recompose.
-    val wash = animateColorAsState(
-        targetValue = accent.container,
-        animationSpec = tween(if (animationsEnabled) TIER_CROSSFADE_MS else 0),
-        label = "tierWash",
-    )
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(colors.paper)
-            .halftone(colors.pink)
-            .tierWash(wash)
+            .paper(colors, dots = colors.red.copy(alpha = 0.10f))
             .hideKeyboardOnTapAbove(hideKeyboard) { barHeight.intValue },
     ) {
-        TitleBand(showNo = state.showNo, dateLabel = state.dateLabel, streak = state.streak)
+        ShowHeader(showNo = state.showNo, dateLabel = state.dateLabel, streak = state.streak)
         val round = state.round
         when {
             state.loadError != null -> LoadError(state.loadError, onRetry = { onAction(GameAction.OnRetryClick) })
@@ -125,7 +114,7 @@ fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabl
                 // box. With the keyboard up it fills this space and scrolls; with the keyboard down
                 // the record stays visible above it. A tap anywhere else closes it.
                 Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                    RoundContent(round, state.isPlaying, state.selectedTier, animationsEnabled, onAction)
+                    RoundContent(round, state.isPlaying, animationsEnabled, onAction)
                     if (state.isDropdownOpen) {
                         Box(
                             Modifier
@@ -142,7 +131,7 @@ fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabl
                             onAction = onAction,
                             modifier = Modifier
                                 .verticalScroll(rememberScrollState())
-                                .padding(start = 16.dp, end = 20.dp, top = 8.dp, bottom = 4.dp),
+                                .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 6.dp),
                         )
                     }
                 }
@@ -164,8 +153,6 @@ fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabl
         }
     }
 }
-
-private const val TIER_CROSSFADE_MS = 300
 
 /**
  * Drops focus from the guess box once the keyboard is down, whether Back or a tap closed it.
@@ -204,11 +191,6 @@ private fun Modifier.hideKeyboardOnTapAbove(hideKeyboard: () -> Unit, keepHeight
         }
     }
 
-/** A soft wash of the selected tier's colour from the top of the paper, fading out by mid-screen. */
-private fun Modifier.tierWash(color: State<Color>): Modifier = drawBehindKeyed(color) {
-    drawRect(Brush.verticalGradient(0f to color.value.copy(alpha = 0.30f), 0.6f to Color.Transparent))
-}
-
 /**
  * Takes only what it shows, so a keystroke in the guess box doesn't rebuild the record, ladder
  * and slots, and tapping play only touches the record.
@@ -217,67 +199,105 @@ private fun Modifier.tierWash(color: State<Color>): Modifier = drawBehindKeyed(c
 private fun RoundContent(
     round: RoundUi,
     isPlaying: Boolean,
-    tier: Tier,
     animationsEnabled: Boolean,
     onAction: (GameAction) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            RecordPlayer(
-                isPlaying = isPlaying,
-                animationsEnabled = animationsEnabled,
-                onPlayClick = { onAction(GameAction.OnPlayClick) },
-                accent = tier.accentColors(),
-                modifier = Modifier.padding(top = 4.dp),
-            )
-            // Apple requires the credit where previews play; small, right under the record.
-            Text(
-                text = stringResource(R.string.apple_music_credit),
-                style = MukhdaTheme.typography.label.copy(fontSize = 9.sp),
-                color = MukhdaTheme.colors.muted,
-            )
+    val onPlayClick = { onAction(GameAction.OnPlayClick) }
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        if (maxHeight >= MinHeightForFittedLayout) {
+            // Everything fits: the stage takes whatever height the ladder and tries leave.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CurtainStage(
+                        isPlaying = isPlaying,
+                        animationsEnabled = animationsEnabled,
+                        onPlayClick = onPlayClick,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+                RoundDetails(round)
+            }
+        } else {
+            // A short phone: a fixed stage and the rest scrolls.
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                CurtainStage(
+                    isPlaying = isPlaying,
+                    animationsEnabled = animationsEnabled,
+                    onPlayClick = onPlayClick,
+                    modifier = Modifier.padding(top = 16.dp).fillMaxWidth().height(MinStageHeight),
+                )
+                RoundDetails(round)
+            }
         }
-        ClipLadderStrip(currentStep = round.currentStep, accent = tier.accentColors())
-        if (!round.isOpen) RoundOver(won = round.isWon)
-        TrySlots(slots = round.slots, modifier = Modifier.padding(bottom = 8.dp))
     }
 }
 
 @Composable
+private fun RoundDetails(round: RoundUi) {
+    ClipLadderStrip(currentStep = round.currentStep, modifier = Modifier.padding(top = 12.dp))
+    if (!round.isOpen) RoundOver(won = round.isWon, modifier = Modifier.padding(top = 10.dp))
+    TrySlots(slots = round.slots, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
+}
+
+private val MinStageHeight = 200.dp
+/** The ladder, round-over line and five tries take about 330 dp; below this the stage gets too small. */
+private val MinHeightForFittedLayout = MinStageHeight + 330.dp
+
+/** Five tabs set in credit-line caps: a dot in each tier's ink, the selected one underlined in it. */
+@Composable
 private fun TierTabs(selected: Tier, onTierClick: (Tier) -> Unit) {
+    val colors = MukhdaTheme.colors
+    val type = MukhdaTheme.typography
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 12.dp)
+            .padding(horizontal = 20.dp)
             .selectableGroup(),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Tier.entries.forEach { tier ->
-            val tierColors = tier.colors()
             val isSelected = tier == selected
-            Box(
+            val tierColor = tier.color()
+            Row(
                 modifier = Modifier
                     .weight(1f)
-                    // The selected tab is raised.
-                    .graphicsLayer { translationY = if (isSelected) -4.dp.toPx() else 0f }
-                    .then(if (isSelected) Modifier.hardShadow(MukhdaTheme.colors.maroon, 3.dp) else Modifier)
-                    .background(tierColors.container)
-                    .border(2.dp, MukhdaTheme.colors.maroon)
                     .selectable(selected = isSelected, role = Role.Tab, onClick = { onTierClick(tier) })
-                    .padding(vertical = 10.dp),
-                contentAlignment = Alignment.Center,
+                    .drawBehindKeyed(Triple(isSelected, tierColor, colors.rule)) {
+                        val line = if (isSelected) 3.dp.toPx() else 1.dp.toPx()
+                        drawRect(
+                            color = if (isSelected) tierColor else colors.rule,
+                            topLeft = Offset(0f, size.height - line),
+                            size = Size(size.width, line),
+                        )
+                    }
+                    .padding(top = 10.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
+                Box(Modifier.size(6.dp).background(tierColor, CircleShape))
                 Text(
                     text = stringResource(tier.labelRes).uppercase(),
-                    style = MukhdaTheme.typography.label,
-                    color = tierColors.content,
+                    style = if (isSelected) type.label.copy(fontWeight = FontWeight.SemiBold) else type.label,
+                    color = if (isSelected) colors.ink else colors.faint,
+                    maxLines = 1,
+                    softWrap = false,
+                    modifier = Modifier.padding(start = 4.dp),
                 )
             }
         }
@@ -285,20 +305,20 @@ private fun TierTabs(selected: Tier, onTierClick: (Tier) -> Unit) {
 }
 
 @Composable
-private fun RoundOver(won: Boolean) {
+private fun RoundOver(won: Boolean, modifier: Modifier = Modifier) {
     Text(
         text = stringResource(if (won) R.string.round_won else R.string.round_lost),
         style = MukhdaTheme.typography.bodyStrong,
-        color = MukhdaTheme.colors.maroon,
+        color = if (won) MukhdaTheme.colors.teal else MukhdaTheme.colors.red,
         textAlign = TextAlign.Center,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     )
 }
 
 @Composable
 private fun Loading() {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = MukhdaTheme.colors.pink)
+        CircularProgressIndicator(color = MukhdaTheme.colors.red)
     }
 }
 
@@ -315,15 +335,13 @@ private fun LoadError(message: UiText, onRetry: () -> Unit) {
         Text(message.asString(), style = MukhdaTheme.typography.body, color = colors.ink, textAlign = TextAlign.Center)
         Text(
             text = stringResource(R.string.retry).uppercase(),
-            style = MukhdaTheme.typography.label,
-            color = colors.ink,
+            style = MukhdaTheme.typography.button,
+            color = colors.marigold,
             modifier = Modifier
                 .padding(top = 16.dp)
-                .hardShadow(colors.maroon, 3.dp)
-                .background(colors.saffron)
-                .border(2.dp, colors.maroon)
+                .background(colors.buttonRed)
                 .clickable(role = Role.Button, onClick = onRetry)
-                .padding(horizontal = 24.dp, vertical = 12.dp),
+                .padding(horizontal = 28.dp, vertical = 14.dp),
         )
     }
 }
