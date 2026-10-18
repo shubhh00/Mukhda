@@ -1,4 +1,4 @@
-import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type Candidate, parseCandidates, yearOfFile } from "../candidates.ts";
 import { paths } from "../config.ts";
@@ -54,20 +54,27 @@ export async function verifyAll(): Promise<void> {
       const outDir = path.join(paths.verified, source);
       const target = path.join(outDir, file);
       const { verified, skipped } = await verifyFile(itunes, source, file, answers);
-      // A skipped candidate has no row, so writing this file would drop its song from the pool,
-      // and from the index built from it. Keep the last complete result until a re-run gets through.
-      if (skipped > 0 && (await exists(target))) {
+      // A skipped candidate has no row, and an unreadable file has none at all, so writing either
+      // would drop songs from the pool and from the index built from it. Keep the last complete
+      // result until a re-run (or a fixed candidate file) gets through.
+      const incomplete = skipped > 0 || verified.parseError !== undefined;
+      if (incomplete && (await exists(target))) {
         keptFiles++;
-        console.log(`  ${source}/${file}: kept the previous verified file, since ${skipped} lookup(s) failed`);
+        const why = verified.parseError ? "the candidate file is unreadable" : `${skipped} lookup(s) failed`;
+        console.log(`  ${source}/${file}: kept the previous verified file, since ${why}`);
         continue;
       }
       await mkdir(outDir, { recursive: true });
-      await writeFile(target, JSON.stringify(verified, null, 2));
+      // Written beside the target and renamed over it, so a run stopped mid-write can't leave a
+      // half-written file for the index command to trip on.
+      const temp = `${target}.tmp`;
+      await writeFile(temp, JSON.stringify(verified, null, 2));
+      await rename(temp, target);
     }
   }
   console.log(
     keptFiles
-      ? `\nDone, but ${keptFiles} file(s) kept their previous result because iTunes lookups failed. Run verify again; answers are cached, so it's quick.`
+      ? `\nDone, but ${keptFiles} file(s) kept their previous result (see above). Fix any unreadable file and run verify again; answers are cached, so it's quick.`
       : "\nDone. Run `npm run report` to compare sources.",
   );
 }

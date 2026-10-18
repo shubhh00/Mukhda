@@ -64,7 +64,7 @@ export function songKey(row: VerifiedRow): string {
 export async function writeReviewPrompts(): Promise<void> {
   const rows: ReviewItem[] = [];
   for (const source of await readdir(paths.verified).catch(() => [] as string[])) {
-    for (const file of (await readdir(path.join(paths.verified, source))).sort()) {
+    for (const file of (await readdir(path.join(paths.verified, source))).filter((f) => f.endsWith(".json")).sort()) {
       const verified = JSON.parse(await readFile(path.join(paths.verified, source, file), "utf8")) as VerifiedFile;
       verified.rows.forEach((row, i) => rows.push({ id: `${source}/${file}#${row.index ?? i}`, row }));
     }

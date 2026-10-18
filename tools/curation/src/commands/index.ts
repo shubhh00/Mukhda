@@ -20,7 +20,7 @@ const APP_INDEX_DIR = path.resolve(ROOT, "..", "..", "data", "src", "main", "ass
 async function loadPool(): Promise<PoolSong[]> {
   const pool: PoolSong[] = [];
   for (const source of await readdir(paths.verified).catch(() => [] as string[])) {
-    for (const file of await readdir(path.join(paths.verified, source))) {
+    for (const file of (await readdir(path.join(paths.verified, source))).filter((f) => f.endsWith(".json"))) {
       const verified = JSON.parse(await readFile(path.join(paths.verified, source, file), "utf8")) as VerifiedFile;
       for (const { candidate, result } of verified.rows) {
         if (result.status === "found" && result.track) pool.push({ track: result.track, film: candidate.film, year: candidate.year });
