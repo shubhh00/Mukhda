@@ -76,7 +76,12 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel()) {
 
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
-            is GameEvent.ShowMessage -> scope.launch { snackbar.showSnackbar(event.message.asString(context)) }
+            // A new message replaces the one showing, so repeated hints don't queue up and an
+            // error isn't shown long after the thing that caused it.
+            is GameEvent.ShowMessage -> scope.launch {
+                snackbar.currentSnackbarData?.dismiss()
+                snackbar.showSnackbar(event.message.asString(context))
+            }
         }
     }
 

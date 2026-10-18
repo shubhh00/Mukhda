@@ -8,6 +8,12 @@ import { type MatchResult, baseTitle, better, evaluate } from "../match.ts";
 import { type ReviewAnswer, applyReview, correctedCandidate, loadReviewAnswers } from "../review-answers.ts";
 
 export interface VerifiedRow {
+  /**
+   * The candidate's position in its file. Review answers are keyed by this, not by the row's
+   * position, because a candidate iTunes failed on has no row and would shift every row after it.
+   * Missing in files verified before it was added; their rows had no gaps, so the position works.
+   */
+  index?: number;
   candidate: Candidate;
   result: MatchResult;
 }
@@ -75,7 +81,7 @@ async function verifyFile(
     try {
       const answer = answers.get(`${source}/${file}#${i}`);
       const result = applyReview(await verifyCandidate(itunes, candidate), answer);
-      rows.push({ candidate: result.reviewed ? correctedCandidate(candidate, answer!) : candidate, result });
+      rows.push({ index: i, candidate: result.reviewed ? correctedCandidate(candidate, answer!) : candidate, result });
     } catch (error) {
       // One song Apple won't answer for mustn't stop the run. It isn't cached, so the next run retries it.
       skipped++;

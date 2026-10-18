@@ -132,9 +132,18 @@ class Media3ClipPlayer @Inject constructor(
                             finish(Outcome.Error(error.toDataError()))
                         }
 
-                        // A call or another app took the audio: the clip is over.
+                        // Another app took the audio for good, or the headphones came out: the
+                        // clip is over.
                         override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
                             if (!playWhenReady && reason != Player.PLAY_WHEN_READY_CHANGE_REASON_USER_REQUEST) {
+                                finish(Outcome.Success(Unit))
+                            }
+                        }
+
+                        // A call takes the audio only for a while: Media3 holds the clip and would
+                        // resume it halfway through afterwards. End it instead.
+                        override fun onPlaybackSuppressionReasonChanged(playbackSuppressionReason: Int) {
+                            if (playbackSuppressionReason != Player.PLAYBACK_SUPPRESSION_REASON_NONE) {
                                 finish(Outcome.Success(Unit))
                             }
                         }
@@ -194,8 +203,10 @@ class Media3ClipPlayer @Inject constructor(
         // A silent track of its own, without audio focus, so music in another app keeps playing.
         val bytes = (WARM_UP_SAMPLE_RATE * WARM_UP_MS / 1000).toInt() * BYTES_PER_STEREO_FRAME
         withContext(Dispatchers.Main.immediate) { player?.takeIf { !it.isPlaying }?.let(::park) }
-        val track = withContext(io) {
-            runCatching {
+        // Built, played and released inside one block, so a failed write or play, or a cancelled
+        // caller, still releases it: a process can only hold a few AudioTracks.
+        withContext(io) {
+            val track = runCatching {
                 AudioTrack.Builder()
                     .setAudioAttributes(
                         android.media.AudioAttributes.Builder()
@@ -213,16 +224,16 @@ class Media3ClipPlayer @Inject constructor(
                     .setTransferMode(AudioTrack.MODE_STATIC)
                     .setBufferSizeInBytes(bytes)
                     .build()
-                    .apply {
-                        write(ByteArray(bytes), 0, bytes)
-                        play()
-                    }
-            }.getOrNull()
-        } ?: return
-        try {
-            delay(WARM_UP_MS + RELEASE_MARGIN_MS)
-        } finally {
-            track.release()
+            }.getOrNull() ?: return@withContext
+            try {
+                track.write(ByteArray(bytes), 0, bytes)
+                track.play()
+                delay(WARM_UP_MS + RELEASE_MARGIN_MS)
+            } catch (e: IllegalStateException) {
+                // The track didn't initialise: the clip's own warm-up covers this tap.
+            } finally {
+                track.release()
+            }
         }
     }
 
@@ -282,8 +293,10 @@ class Media3ClipPlayer @Inject constructor(
     /** Reads the cached preview into a temp file and measures its lead-in. IO thread. */
     private fun measureLeadIn(url: String) {
         if (leadIn(url) != null) return
-        val file = File.createTempFile("preview", ".m4a", context.cacheDir)
+        var file: File? = null
         try {
+            // Inside the try: on a full disk this throws too, and that mustn't escape play().
+            file = File.createTempFile("preview", ".m4a", context.cacheDir)
             val source = dataSourceFactory.createDataSource()
             source.open(DataSpec(url.toUri()))
             try {
@@ -305,7 +318,7 @@ class Media3ClipPlayer @Inject constructor(
             // Unreadable: clips start at 0, as they would without the check.
             leadIns[url] = 0
         } finally {
-            file.delete()
+            file?.delete()
         }
     }
 

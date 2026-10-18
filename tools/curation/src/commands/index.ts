@@ -59,6 +59,10 @@ export async function writeSearchIndex(): Promise<void> {
   }
   console.log(`${pool.length} pool songs, ${albums.size} soundtrack albums, ${singleOnly.size} films found only as singles.`);
 
+  // A failed lookup leaves songs out. Publishing that would make phones swap a full index for a
+  // short one, so it's written for inspection but not published; responses are cached, so a
+  // re-run only repeats the lookups that failed.
+  let failedLookups = 0;
   let i = 0;
   for (const { film, year } of singleOnly.values()) {
     process.stdout.write(`\rlooking for soundtracks ${++i}/${singleOnly.size}   `);
@@ -68,6 +72,7 @@ export async function writeSearchIndex(): Promise<void> {
       );
       if (found && !albums.has(found.collectionId)) albums.set(found.collectionId, { film, year });
     } catch (error) {
+      failedLookups++;
       console.log(`\n  skipped "${film}": ${(error as Error).message}`);
     }
   }
@@ -79,6 +84,7 @@ export async function writeSearchIndex(): Promise<void> {
     try {
       sources.push({ film, year, tracks: await itunes.albumTracks(id) });
     } catch (error) {
+      failedLookups++;
       console.log(`\n  skipped album ${id} (${film}): ${(error as Error).message}`);
     }
   }
@@ -94,6 +100,10 @@ export async function writeSearchIndex(): Promise<void> {
   await mkdir(path.join(paths.index), { recursive: true });
   await writeFile(path.join(paths.index, "search_index.json"), body);
 
+  if (failedLookups > 0) {
+    console.log(`${failedLookups} iTunes lookups failed, so the index wasn't published to the app. Run index again.`);
+    return;
+  }
   await publishToApp(body);
 }
 

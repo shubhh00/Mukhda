@@ -66,7 +66,7 @@ export async function writeReviewPrompts(): Promise<void> {
   for (const source of await readdir(paths.verified).catch(() => [] as string[])) {
     for (const file of (await readdir(path.join(paths.verified, source))).sort()) {
       const verified = JSON.parse(await readFile(path.join(paths.verified, source, file), "utf8")) as VerifiedFile;
-      verified.rows.forEach((row, i) => rows.push({ id: `${source}/${file}#${i}`, row }));
+      verified.rows.forEach((row, i) => rows.push({ id: `${source}/${file}#${row.index ?? i}`, row }));
     }
   }
 
