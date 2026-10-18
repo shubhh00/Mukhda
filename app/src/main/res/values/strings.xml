@@ -46,6 +46,7 @@
     <string name="stop_clip">■ STOP</string>
     <string name="apple_music_credit" translatable="false">PREVIEWS COURTESY OF APPLE MUSIC</string>
     <string name="retry">Retry</string>
+    <string name="volume_low">Turn up the volume. Clips are short.</string>
 
     <string name="error_round_closed">This show has ended. Loading today\'s show.</string>
     <string name="error_invalid_song">That song isn\'t in our list. Pick one from the suggestions.</string>

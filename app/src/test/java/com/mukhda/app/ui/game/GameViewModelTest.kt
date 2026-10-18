@@ -42,6 +42,7 @@ class GameViewModelTest {
     )
     private val show = FakeShowRepository()
     private val songIndex = FakeSongIndexDataSource(songs)
+    private val player = FakeClipPlayer()
 
     @BeforeEach
     fun setUp() = Dispatchers.setMain(dispatcher)
@@ -49,7 +50,7 @@ class GameViewModelTest {
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex)
+    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex, player)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -255,6 +256,81 @@ class GameViewModelTest {
         assertThat(vm.state.value.isPlaying).isTrue()
         advanceTimeBy(150)
         assertThat(vm.state.value.isPlaying).isFalse()
+    }
+
+    @Test
+    fun `loading the show caches every preview`() = runTest(dispatcher) {
+        viewModel()
+        assertThat(player.cached.toSet()).isEqualTo(show.previews.values.toSet())
+    }
+
+    @Test
+    fun `play uses the selected tier's preview and the current step's length`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnTierClick(Tier.HARD))
+        vm.onAction(GameAction.OnSkipClick)
+        vm.onAction(GameAction.OnPlayClick)
+        assertThat(player.played.single()).isEqualTo(show.previews.getValue(Tier.HARD) to 500L)
+    }
+
+    @Test
+    fun `the next clip is preloaded after loading, a try and a tier change`() = runTest(dispatcher) {
+        val vm = viewModel()
+        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 100L)
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 500L)
+        vm.onAction(GameAction.OnTierClick(Tier.LEGEND))
+        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.LEGEND) to 100L)
+    }
+
+    @Test
+    fun `the speaker is woken when a play is likely, but not once the round is over`() = runTest(dispatcher) {
+        val vm = viewModel()
+        val afterLoad = player.speakerWakes
+        assertThat(afterLoad).isEqualTo(1)
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        // Four skips each set up the next clip; the fifth closes the round.
+        assertThat(player.speakerWakes).isEqualTo(afterLoad + 4)
+    }
+
+    @Test
+    fun `the last step plays the whole preview`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(4) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnPlayClick)
+        assertThat(player.played.single().second).isNull()
+    }
+
+    @Test
+    fun `tapping play again stops the clip`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(4) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnPlayClick)
+        vm.onAction(GameAction.OnPlayClick)
+        assertThat(vm.state.value.isPlaying).isFalse()
+        assertThat(player.played).hasSize(1)
+    }
+
+    @Test
+    fun `a clip that fails to play shows a message`() = runTest(dispatcher) {
+        val vm = viewModel()
+        player.playError = DataError.Network.NO_INTERNET
+        vm.events.test {
+            vm.onAction(GameAction.OnPlayClick)
+            assertThat(awaitItem()).isInstanceOf<GameEvent.ShowMessage>()
+        }
+        assertThat(vm.state.value.isPlaying).isFalse()
+    }
+
+    @Test
+    fun `low volume shows a hint and still plays`() = runTest(dispatcher) {
+        val vm = viewModel()
+        player.volumeLow = true
+        vm.events.test {
+            vm.onAction(GameAction.OnPlayClick)
+            assertThat(awaitItem()).isInstanceOf<GameEvent.ShowMessage>()
+        }
+        assertThat(player.played).hasSize(1)
     }
 
     @Test

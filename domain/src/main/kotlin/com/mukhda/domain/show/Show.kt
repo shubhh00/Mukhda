@@ -4,6 +4,7 @@ import com.mukhda.domain.AppError
 import com.mukhda.domain.DataError
 import com.mukhda.domain.GameError
 import com.mukhda.domain.Outcome
+import com.mukhda.domain.audio.Preview
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
@@ -18,6 +19,8 @@ data class Show(
     /** Midnight IST that closes the show, from the server. */
     val endsAt: Instant,
     val rounds: Map<Tier, RoundState>,
+    /** Each tier's preview. The server sends these, never the songs behind them. */
+    val previews: Map<Tier, Preview> = emptyMap(),
 )
 
 /** Why a try wasn't accepted: the request failed, or the game's rules refused it. */

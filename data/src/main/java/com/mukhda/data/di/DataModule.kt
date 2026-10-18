@@ -2,6 +2,7 @@ package com.mukhda.data.di
 
 import android.content.Context
 import androidx.room.Room
+import com.mukhda.data.audio.Media3ClipPlayer
 import com.mukhda.data.db.MukhdaDatabase
 import com.mukhda.data.round.RoundDao
 import com.mukhda.data.round.TryDao
@@ -10,6 +11,7 @@ import com.mukhda.data.search.RoomSongIndexDataSource
 import com.mukhda.data.search.SearchIndexAsset
 import com.mukhda.data.search.SearchIndexDao
 import com.mukhda.data.show.StandInShowRepository
+import com.mukhda.domain.audio.ClipPlayer
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.show.ShowRepository
 import dagger.Binds
@@ -56,6 +58,9 @@ abstract class DataBindings {
 
     @Binds
     abstract fun songIndex(source: RoomSongIndexDataSource): SongIndexDataSource
+
+    @Binds
+    abstract fun clipPlayer(player: Media3ClipPlayer): ClipPlayer
 
     @Binds
     abstract fun searchIndexAsset(asset: BundledSearchIndexAsset): SearchIndexAsset

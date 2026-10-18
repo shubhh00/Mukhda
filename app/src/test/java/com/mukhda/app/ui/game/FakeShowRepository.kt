@@ -2,6 +2,7 @@ package com.mukhda.app.ui.game
 
 import com.mukhda.domain.DataError
 import com.mukhda.domain.Outcome
+import com.mukhda.domain.audio.Preview
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
@@ -17,6 +18,7 @@ import java.time.LocalDate
 class FakeShowRepository : ShowRepository {
     val date: LocalDate = LocalDate.of(2026, 10, 13)
     var rounds = Tier.entries.associateWith { RoundState(it) }
+    val previews = Tier.entries.associateWith { Preview("https://example.com/${it.name.lowercase()}.m4a") }
     var loadError: DataError? = null
     var nextTryError: TryError? = null
     var judge: (songId: String) -> TryResult = { TryResult.WRONG }
@@ -27,7 +29,9 @@ class FakeShowRepository : ShowRepository {
     override suspend fun todaysShow(): Outcome<Show, DataError> {
         loads++
         loadError?.let { return Outcome.Error(it) }
-        return Outcome.Success(Show(date, showNo = 12, endsAt = Instant.parse("2026-10-13T18:30:00Z"), rounds = rounds))
+        return Outcome.Success(
+            Show(date, showNo = 12, endsAt = Instant.parse("2026-10-13T18:30:00Z"), rounds = rounds, previews = previews),
+        )
     }
 
     override suspend fun submitTry(

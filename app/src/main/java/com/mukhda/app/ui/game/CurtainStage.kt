@@ -52,12 +52,11 @@ import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaColors
 import com.mukhda.app.ui.theme.MukhdaTheme
 import com.mukhda.app.ui.theme.drawBehindKeyed
-import kotlin.math.PI
 import kotlin.math.min
-import kotlin.math.sin
 
 private const val PRESS_MS = 90
-private const val SWAY_MS = 1000
+private const val SWAY_OUT_MS = 250
+private const val SWAY_BACK_MS = 300
 private const val GLOW_MS = 120
 private val SwayDistance = 5.dp
 private val ValanceHeight = 24.dp
@@ -68,7 +67,7 @@ private val MaxButton = 128.dp
 /**
  * "Now showing": a framed stage with a closed velvet curtain and the play button. Nothing on it
  * hints at the answer. The only motion follows a tap: while a clip plays the footlights come up
- * and the curtain sways once. It fills the size [modifier] gives it; the button scales with it.
+ * and the curtain eases open a touch. It fills the size [modifier] gives it; the button scales with it.
  */
 @Composable
 fun CurtainStage(
@@ -78,13 +77,15 @@ fun CurtainStage(
     modifier: Modifier = Modifier,
 ) {
     val colors = MukhdaTheme.colors
+    // The curtain eases open a touch while sound plays and settles back when it stops, so the
+    // motion lasts exactly as long as the clip.
     val sway = remember { Animatable(0f) }
     LaunchedEffect(isPlaying, animationsEnabled) {
-        if (isPlaying && animationsEnabled) {
+        if (!animationsEnabled) {
             sway.snapTo(0f)
-            sway.animateTo(1f, tween(SWAY_MS))
+        } else {
+            sway.animateTo(if (isPlaying) 1f else 0f, tween(if (isPlaying) SWAY_OUT_MS else SWAY_BACK_MS))
         }
-        sway.snapTo(0f)
     }
     val glow by animateFloatAsState(
         targetValue = if (isPlaying) 1f else 0f,
@@ -139,9 +140,7 @@ fun CurtainStage(
     }
 }
 
-/** One full sway: out and back, peaking halfway. */
-private fun Density.swayOffset(progress: Float): Float =
-    sin(progress * PI).toFloat() * SwayDistance.toPx()
+private fun Density.swayOffset(progress: Float): Float = progress * SwayDistance.toPx()
 
 @Composable
 private fun BoxScope.CurtainHalf(

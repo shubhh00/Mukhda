@@ -8,6 +8,7 @@ import com.mukhda.app.ui.common.UiText
 import com.mukhda.app.ui.common.toUiText
 import com.mukhda.domain.GameError
 import com.mukhda.domain.Outcome
+import com.mukhda.domain.audio.ClipPlayer
 import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.onFailure
@@ -35,6 +36,7 @@ class GameViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val showRepository: ShowRepository,
     private val songIndex: SongIndexDataSource,
+    private val clipPlayer: ClipPlayer,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GameState(guessText = savedStateHandle[KEY_GUESS_TEXT] ?: ""))
@@ -82,6 +84,13 @@ class GameViewModel @Inject constructor(
                     show = loaded
                     rememberGuessedSongs(loaded)
                     publishShow()
+                    // Get the selected tier's clip ready first, so an early tap plays at once, then
+                    // download the rest. A failure here is retried, and reported, by the next play.
+                    launch {
+                        loaded.previews[_state.value.selectedTier]?.let { clipPlayer.cache(listOf(it)) }
+                        preloadCurrentClip()
+                        clipPlayer.cache(loaded.previews.values)
+                    }
                 }
                 .onFailure { error -> _state.update { it.copy(isLoading = false, loadError = error.toUiText()) } }
         }
@@ -112,6 +121,7 @@ class GameViewModel @Inject constructor(
         _state.update { it.copy(selectedTier = action.tier, suggestionsDismissed = true) }
         // "Already guessed" depends on the tier's round.
         refreshSuggestions()
+        preloadCurrentClip()
     }
 
     private fun onGuessTextChange(text: String) {
@@ -179,6 +189,8 @@ class GameViewModel @Inject constructor(
                     this@GameViewModel.show = show.copy(rounds = show.rounds + (tier to result.data))
                     clearGuess()
                     publishShow()
+                    // A miss moves the ladder up a step: the next clip is longer.
+                    preloadCurrentClip()
                 }
                 is Outcome.Error -> handleTryError(result.error)
             }
@@ -206,18 +218,35 @@ class GameViewModel @Inject constructor(
         _state.update { it.copy(guessText = "", selectedSong = null, suggestions = emptyList(), suggestionsTotal = 0) }
     }
 
-    /** Stands in for clip playback until the audio player lands: "plays" for the clip's length. */
+    /** Plays the current step's clip of the selected tier; tapping again stops it. */
     private fun togglePlay() {
         if (_state.value.isPlaying) {
             stopPlaying()
             return
         }
+        val tier = _state.value.selectedTier
         val step = _state.value.round?.currentStep ?: return
+        val preview = show?.previews?.get(tier) ?: return
+        if (clipPlayer.isVolumeLow()) {
+            viewModelScope.launch { _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.volume_low))) }
+        }
         _state.update { it.copy(isPlaying = true) }
         playJob = viewModelScope.launch {
-            delay(ClipLadder.clipLengthMs(step) ?: FULL_PREVIEW_MS)
+            clipPlayer.play(preview, ClipLadder.clipLengthMs(step))
+                .onFailure { _events.send(GameEvent.ShowMessage(it.toUiText())) }
             _state.update { it.copy(isPlaying = false) }
         }
+    }
+
+    /**
+     * Gets the clip the player is likely to ask for next ready, and wakes the speaker, so a tap in
+     * the next couple of seconds plays at once.
+     */
+    private fun preloadCurrentClip() {
+        val preview = show?.previews?.get(_state.value.selectedTier) ?: return
+        val step = _state.value.round?.currentStep ?: return
+        viewModelScope.launch { clipPlayer.preload(preview, ClipLadder.clipLengthMs(step)) }
+        if (_state.value.round?.isOpen == true) viewModelScope.launch { clipPlayer.wakeSpeaker() }
     }
 
     private fun stopPlaying() {
@@ -225,9 +254,12 @@ class GameViewModel @Inject constructor(
         _state.update { it.copy(isPlaying = false) }
     }
 
+    override fun onCleared() {
+        clipPlayer.release()
+    }
+
     private companion object {
         const val KEY_GUESS_TEXT = "guessText"
         const val SEARCH_DEBOUNCE_MS = 150L
-        const val FULL_PREVIEW_MS = 30_000L
     }
 }
