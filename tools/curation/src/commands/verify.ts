@@ -1,4 +1,4 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type Candidate, parseCandidates, yearOfFile } from "../candidates.ts";
 import { paths } from "../config.ts";
@@ -47,43 +47,50 @@ export async function verifyAll(): Promise<void> {
     return;
   }
 
+  let keptFiles = 0;
   for (const source of sources) {
     const files = (await readdir(path.join(paths.candidates, source))).filter((f) => f.endsWith(".json"));
     for (const file of files) {
       const outDir = path.join(paths.verified, source);
-      const previous = await readFile(path.join(outDir, file), "utf8")
-        .then((text) => JSON.parse(text) as VerifiedFile)
-        .catch(() => undefined);
-      const verified = await verifyFile(itunes, source, file, answers, previous);
+      const target = path.join(outDir, file);
+      const { verified, skipped } = await verifyFile(itunes, source, file, answers);
+      // A skipped candidate has no row, so writing this file would drop its song from the pool,
+      // and from the index built from it. Keep the last complete result until a re-run gets through.
+      if (skipped > 0 && (await exists(target))) {
+        keptFiles++;
+        console.log(`  ${source}/${file}: kept the previous verified file, since ${skipped} lookup(s) failed`);
+        continue;
+      }
       await mkdir(outDir, { recursive: true });
-      await writeFile(path.join(outDir, file), JSON.stringify(verified, null, 2));
+      await writeFile(target, JSON.stringify(verified, null, 2));
     }
   }
-  console.log("\nDone. Run `npm run report` to compare sources.");
+  console.log(
+    keptFiles
+      ? `\nDone, but ${keptFiles} file(s) kept their previous result because iTunes lookups failed. Run verify again; answers are cached, so it's quick.`
+      : "\nDone. Run `npm run report` to compare sources.",
+  );
 }
+
+const exists = (file: string) => access(file).then(() => true, () => false);
 
 async function verifyFile(
   itunes: ItunesClient,
   source: string,
   file: string,
   answers: Map<string, ReviewAnswer>,
-  /** The last run's result for this file: a candidate iTunes fails on now keeps its old row. */
-  previous?: VerifiedFile,
-): Promise<VerifiedFile> {
+): Promise<{ verified: VerifiedFile; skipped: number }> {
   const text = await readFile(path.join(paths.candidates, source, file), "utf8");
   let parsed;
   try {
     parsed = parseCandidates(text, yearOfFile(file));
   } catch (error) {
     console.log(`${source}/${file}: unreadable (${(error as Error).message})`);
-    return { source, file, parseError: (error as Error).message, invalid: 0, rows: [] };
+    return { verified: { source, file, parseError: (error as Error).message, invalid: 0, rows: [] }, skipped: 0 };
   }
 
-  // Files verified before rows carried an index had no gaps, so their position is the index.
-  const previousRows = new Map((previous?.rows ?? []).map((row, position) => [row.index ?? position, row]));
   const rows: VerifiedRow[] = [];
   let skipped = 0;
-  let kept = 0;
   for (const [i, candidate] of parsed.candidates.entries()) {
     process.stdout.write(`\r${source}/${file}: ${i + 1}/${parsed.candidates.length}   `);
     try {
@@ -91,28 +98,15 @@ async function verifyFile(
       const result = applyReview(await verifyCandidate(itunes, candidate), answer);
       rows.push({ index: i, candidate: result.reviewed ? correctedCandidate(candidate, answer!) : candidate, result });
     } catch (error) {
-      // One song Apple won't answer for mustn't stop the run. It isn't cached, so the next run
-      // retries it. Until then it keeps last run's row, if that row is the same song: dropping it
-      // would drop the song from the pool, and from the index built from the pool.
-      const old = previousRows.get(i);
-      if (old && old.candidate.title.toLowerCase() === candidate.title.toLowerCase()) {
-        rows.push({ ...old, index: i });
-        kept++;
-        console.log(`\n  "${candidate.title}": ${(error as Error).message}; kept last run's result, retried next run`);
-      } else {
-        skipped++;
-        console.log(`\n  skipped "${candidate.title}" (${(error as Error).message}); retried next run`);
-      }
+      // One song Apple won't answer for mustn't stop the run. It isn't cached, so the next run retries it.
+      skipped++;
+      console.log(`\n  skipped "${candidate.title}" (${(error as Error).message}); retried next run`);
     }
   }
   const found = rows.filter((r) => r.result.status === "found").length;
-  const notes = [
-    parsed.invalid ? `${parsed.invalid} invalid` : "",
-    kept ? `${kept} kept from last run` : "",
-    skipped ? `${skipped} skipped` : "",
-  ].filter(Boolean);
+  const notes = [parsed.invalid ? `${parsed.invalid} invalid` : "", skipped ? `${skipped} skipped` : ""].filter(Boolean);
   console.log(`\r${source}/${file}: ${found}/${rows.length} found${notes.length ? `, ${notes.join(", ")}` : ""}`);
-  return { source, file, invalid: parsed.invalid, rows };
+  return { verified: { source, file, invalid: parsed.invalid, rows }, skipped };
 }
 
 /**
