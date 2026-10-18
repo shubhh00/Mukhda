@@ -1,0 +1,4 @@
+# Compile all of Mukhda's own code ahead of time at install, so the first taps and keystrokes don't
+# run interpreted. The libraries (Compose, Room, ...) ship their own rules; these cover ours.
+HSPLcom/mukhda/**->**(**)**
+Lcom/mukhda/**;

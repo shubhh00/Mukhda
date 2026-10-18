@@ -1,0 +1,13 @@
+{
+  "name": "mukhda-icon",
+  "private": true,
+  "type": "module",
+  "description": "Generates the app icon (adaptive foreground + Play Store PNG) from the bundled Yatra One font.",
+  "scripts": {
+    "generate": "node generate.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "harfbuzzjs": "^0.10.3"
+  }
+}

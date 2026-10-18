@@ -2,13 +2,54 @@
     <string name="app_name">Mukhda</string>
 
     <string name="wordmark" translatable="false">MUKHDA</string>
-    <string name="wordmark_devanagari" translatable="false">मुखड़ा</string>
 
     <string name="tier_easy">Easy</string>
     <string name="tier_medium">Medium</string>
     <string name="tier_hard">Hard</string>
     <string name="tier_expert">Expert</string>
     <string name="tier_legend">Legend</string>
+
+    <!-- Game screen -->
+    <string name="show_line">SHOW NO. %1$d · %2$s</string>
+    <string name="streak_badge">%1$d HOUSEFULL</string>
+    <string name="clip_of">Clip %1$d of %2$d</string>
+    <string name="clip_0">0.1 sec</string>
+    <string name="clip_1">0.5 sec</string>
+    <string name="clip_2">1 sec</string>
+    <string name="clip_3">2 sec</string>
+    <string name="clip_full">Full</string>
+    <!-- Under the two narrowest ladder bars, where "0.1 sec" doesn't fit. -->
+    <string name="ladder_0">0.1</string>
+    <string name="ladder_1">0.5</string>
+    <string name="now_showing">Now showing</string>
+    <string name="cd_play_clip">Play clip</string>
+    <string name="cd_stop_clip">Stop clip</string>
+
+    <string name="stamp_wrong">WRONG</string>
+    <string name="stamp_right_film">RIGHT FILM</string>
+    <string name="stamp_skipped">SKIPPED</string>
+    <string name="stamp_correct">CORRECT</string>
+    <string name="slot_skipped">Skipped</string>
+    <string name="slot_unknown_song">Song not in the list</string>
+    <string name="round_won">You got it.</string>
+    <string name="round_lost">Out of tries for this tier. Try another one, or come back for the next show.</string>
+
+    <string name="guess_hint">Type a song or film</string>
+    <string name="guess_closed">This round is over</string>
+    <string name="cd_clear_guess">Clear</string>
+    <string name="skip">Skip</string>
+    <string name="guess">Guess</string>
+    <string name="pick_a_song">PICK A SONG</string>
+    <string name="more_results">%1$d OF %2$d SHOWN · TYPE MORE TO NARROW</string>
+    <string name="already_guessed">Already guessed</string>
+    <string name="replay_clip">▶ REPLAY</string>
+    <string name="stop_clip">■ STOP</string>
+    <string name="apple_music_credit" translatable="false">PREVIEWS COURTESY OF APPLE MUSIC</string>
+    <string name="retry">Retry</string>
+    <string name="volume_low">Turn up the volume. Clips are short.</string>
+
+    <string name="error_round_closed">This show has ended. Loading today\'s show.</string>
+    <string name="error_invalid_song">That song isn\'t in our list. Pick one from the suggestions.</string>
 
     <!-- Plain English, short, and each one points at an action. -->
     <string name="error_no_internet">No connection. Check your internet and try again.</string>

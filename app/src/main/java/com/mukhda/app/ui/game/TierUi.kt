@@ -3,15 +3,16 @@ package com.mukhda.app.ui.game
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.graphics.Color
 import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaTheme
-import com.mukhda.app.ui.theme.TierColors
 import com.mukhda.domain.model.Tier
 
+/** The tier's poster ink: its tab dot and underline. */
 @Composable
 @ReadOnlyComposable
-internal fun Tier.colors(): TierColors = with(MukhdaTheme.colors) {
-    when (this@colors) {
+internal fun Tier.color(): Color = with(MukhdaTheme.colors) {
+    when (this@color) {
         Tier.EASY -> tierEasy
         Tier.MEDIUM -> tierMedium
         Tier.HARD -> tierHard

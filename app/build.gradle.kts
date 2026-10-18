@@ -41,6 +41,13 @@ android {
                 "proguard-rules.pro",
             )
         }
+        // Release code, debug key: installs on a dev phone to judge real performance.
+        // Debug builds of Compose are far slower, so never judge smoothness from them.
+        create("profile") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

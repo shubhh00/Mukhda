@@ -29,19 +29,21 @@ object MukhdaTheme {
 fun MukhdaTheme(content: @Composable () -> Unit) {
     val tokens = MukhdaTokens()
     val colors = tokens.colors
-    // The Poster look is light-only in v1; the Material scheme keeps stock components on-palette.
+    // The poster-wall look is light-only in v1; the Material scheme keeps stock components on-palette.
     val materialColors = lightColorScheme(
-        primary = colors.saffron,
-        onPrimary = colors.ink,
-        secondary = colors.pink,
-        onSecondary = colors.paperLight,
+        primary = colors.buttonRed,
+        onPrimary = colors.marigold,
+        secondary = colors.marigoldDeep,
+        onSecondary = colors.ink,
         background = colors.paper,
         onBackground = colors.ink,
-        surface = colors.paperLight,
+        surface = colors.card,
         onSurface = colors.ink,
         onSurfaceVariant = colors.muted,
-        outline = colors.maroon,
-        error = colors.pink,
+        inverseSurface = colors.ink,
+        inverseOnSurface = colors.paper,
+        outline = colors.ink,
+        error = colors.red,
     )
     CompositionLocalProvider(LocalMukhdaTokens provides tokens) {
         MaterialTheme(colorScheme = materialColors, content = content)
