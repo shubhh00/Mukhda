@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,10 +19,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Text
@@ -43,6 +46,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -160,51 +164,34 @@ private fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     }
 }
 
-/** An old cinema ticket: ADMIT ONE band, show and date, the tier as the screen, the verdict, the tries. */
+/**
+ * The day's ticket, dressed like the stage: the ink valance with the show and date, a frame in
+ * the tier's colour with diamond corners, the wordmark and tier, the verdict and the tries.
+ */
 @Composable
 fun Ticket(ticket: TicketUi, modifier: Modifier = Modifier) {
     val colors = MukhdaTheme.colors
     val type = MukhdaTheme.typography
-    Column(
-        modifier = modifier
-            .width(TICKET_WIDTH)
-            .shadow(12.dp, RectangleShape, ambientColor = colors.ink, spotColor = colors.ink)
-            .background(colors.ticketPaper),
-    ) {
-        Row(
+    val tierColor = ticket.tier.color()
+    Box(modifier = modifier.width(TICKET_WIDTH)) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colors.red)
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .shadow(12.dp, RectangleShape, ambientColor = colors.ink, spotColor = colors.ink)
+                .background(colors.ticketPaper)
+                .border(2.dp, tierColor),
         ) {
-            Text(stringResource(R.string.wordmark), style = type.wordmark.copy(fontSize = 30.sp), color = colors.marigold)
-            Text(
-                text = stringResource(R.string.admit_one).uppercase(),
-                style = type.caption.copy(fontWeight = FontWeight.SemiBold),
-                color = colors.marigold,
-                modifier = Modifier.border(1.5.dp, colors.marigold).padding(horizontal = 7.dp, vertical = 3.dp),
-            )
-        }
-
-        Box(Modifier.padding(10.dp).border(1.5.dp, colors.ink).padding(3.dp)) {
+            TicketValance(stringResource(R.string.show_line, ticket.showNo, ticket.dateLabel))
             Column(
-                modifier = Modifier.border(1.dp, colors.ink).padding(14.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Row(Modifier.fillMaxWidth()) {
-                    TicketField(R.string.ticket_show, stringResource(R.string.ticket_show_no, ticket.showNo), Modifier.weight(1f))
-                    TicketField(R.string.ticket_date, ticket.dateLabel.substringAfter(' '), Modifier.weight(1f))
-                    TicketField(
-                        label = R.string.ticket_screen,
-                        value = stringResource(ticket.tier.labelRes).uppercase(),
-                        modifier = Modifier.weight(1f),
-                        valueColor = ticket.tier.color(),
-                        alignEnd = true,
-                    )
+                Text(stringResource(R.string.wordmark), style = type.wordmark.copy(fontSize = 34.sp), color = colors.red)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Box(Modifier.size(6.dp).background(tierColor, CircleShape))
+                    Text(stringResource(ticket.tier.labelRes).uppercase(), style = type.label, color = colors.ink)
                 }
-                DiamondRule(modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+                DiamondRule(color = tierColor, modifier = Modifier.padding(top = 14.dp, bottom = 10.dp))
                 Text(
                     text = stringResource(R.string.todays_performance).uppercase(),
                     style = type.caption.copy(letterSpacing = type.label.letterSpacing),
@@ -212,9 +199,9 @@ fun Ticket(ticket: TicketUi, modifier: Modifier = Modifier) {
                 )
                 BasicText(
                     text = verdictHeadline(ticket.verdict),
-                    style = type.verdict.copy(color = colors.red),
+                    style = type.verdict.copy(color = if (ticket.verdict.isCelebrated) colors.teal else colors.red),
                     maxLines = 1,
-                    autoSize = TextAutoSize.StepBased(minFontSize = 30.sp, maxFontSize = 62.sp),
+                    autoSize = TextAutoSize.StepBased(minFontSize = 30.sp, maxFontSize = 58.sp),
                 )
                 Text(
                     text = ticket.solvedAtStep
@@ -226,63 +213,82 @@ fun Ticket(ticket: TicketUi, modifier: Modifier = Modifier) {
                 )
                 TrySquares(ticket.slots, size = 26.dp, gap = 6.dp, modifier = Modifier.padding(top = 16.dp))
                 if (ticket.streak > 0) {
-                    Box(Modifier.padding(top = 16.dp).fillMaxWidth().height(1.dp).background(colors.ink))
-                    Column(Modifier.fillMaxWidth().padding(top = 10.dp)) {
-                        Text(
-                            text = stringResource(R.string.ticket_streak, ticket.streak).uppercase(),
-                            style = type.label.copy(fontSize = 22.sp, letterSpacing = 0.sp),
-                            color = colors.ink,
-                        )
-                        Text(stringResource(R.string.ticket_streak_label).uppercase(), style = type.caption, color = colors.muted)
-                    }
+                    Text(
+                        text = pluralStringResource(R.plurals.days_housefull, ticket.streak, ticket.streak).uppercase(),
+                        style = type.label,
+                        color = colors.ink,
+                        modifier = Modifier.padding(top = 14.dp),
+                    )
+                }
+            }
+
+            Perforation()
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Barcode(seed = ticket.showNo * 10 + ticket.tier.ordinal)
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = stringResource(R.string.ticket_tagline).uppercase(),
+                        style = type.caption.copy(fontSize = 9.sp, lineHeight = 14.sp),
+                        color = colors.muted,
+                        textAlign = TextAlign.End,
+                    )
+                    Text(
+                        text = stringResource(R.string.ticket_get_it).uppercase(),
+                        style = type.caption.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold),
+                        color = colors.red,
+                    )
                 }
             }
         }
+        TicketCorners(tierColor)
+    }
+}
 
-        Perforation()
-
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 6.dp, bottom = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Barcode(seed = ticket.showNo * 10 + ticket.tier.ordinal)
-            Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    text = stringResource(R.string.ticket_tagline).uppercase(),
-                    style = type.caption.copy(fontSize = 9.sp, lineHeight = 14.sp),
-                    color = colors.muted,
-                    textAlign = TextAlign.End,
-                    modifier = Modifier.width(170.dp),
-                )
-                Text(
-                    text = stringResource(R.string.ticket_get_it).uppercase(),
-                    style = type.caption.copy(fontSize = 9.sp, fontWeight = FontWeight.SemiBold),
-                    color = colors.red,
-                )
+/** The stage's pelmet across the top: ink, with the show and date in marigold over a fringe. */
+@Composable
+private fun TicketValance(text: String) {
+    val colors = MukhdaTheme.colors
+    val type = MukhdaTheme.typography
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            text = text,
+            style = type.caption.copy(letterSpacing = type.label.letterSpacing),
+            color = colors.marigold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth().background(colors.ink).padding(vertical = 7.dp),
+        )
+        Canvas(Modifier.fillMaxWidth().height(8.dp)) {
+            val edge = 2.dp.toPx()
+            drawRect(colors.marigoldDeep, size = Size(size.width, edge))
+            val tick = 2.dp.toPx()
+            val gap = 9.dp.toPx()
+            var x = gap / 2
+            while (x < size.width) {
+                drawRect(colors.marigoldDeep, topLeft = Offset(x, edge), size = Size(tick, size.height - edge))
+                x += gap
             }
         }
     }
 }
 
+/** Diamonds on the ticket's corners, as on the stage frame. */
 @Composable
-private fun TicketField(
-    label: Int,
-    value: String,
-    modifier: Modifier = Modifier,
-    valueColor: Color = MukhdaTheme.colors.ink,
-    alignEnd: Boolean = false,
-) {
-    val type = MukhdaTheme.typography
-    Column(modifier = modifier, horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start) {
-        Text(stringResource(label).uppercase(), style = type.caption.copy(fontSize = 9.sp), color = MukhdaTheme.colors.muted)
-        Text(value, style = type.label.copy(fontSize = 17.sp, letterSpacing = 1.sp), color = valueColor)
-    }
+private fun BoxScope.TicketCorners(color: Color) {
+    val corner = Modifier.size(8.dp).rotate(45f).background(color)
+    Box(Modifier.align(Alignment.TopStart).offset((-4).dp, (-4).dp).then(corner))
+    Box(Modifier.align(Alignment.TopEnd).offset(4.dp, (-4).dp).then(corner))
+    Box(Modifier.align(Alignment.BottomStart).offset((-4).dp, 4.dp).then(corner))
+    Box(Modifier.align(Alignment.BottomEnd).offset(4.dp, 4.dp).then(corner))
 }
 
-/** A full-width ink rule broken by a small red diamond. */
+/** A full-width ink rule broken by a small diamond in [color]. */
 @Composable
-private fun DiamondRule(modifier: Modifier = Modifier) {
+private fun DiamondRule(color: Color, modifier: Modifier = Modifier) {
     val colors = MukhdaTheme.colors
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -290,7 +296,7 @@ private fun DiamondRule(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.weight(1f).height(1.dp).background(colors.ink))
-        Box(Modifier.size(6.dp).rotate(45f).background(colors.red))
+        Box(Modifier.size(6.dp).rotate(45f).background(color))
         Box(Modifier.weight(1f).height(1.dp).background(colors.ink))
     }
 }
@@ -318,7 +324,7 @@ private fun Perforation() {
 private fun Barcode(seed: Int) {
     val ink = MukhdaTheme.colors.ink
     val widths = remember(seed) { Random(seed).let { r -> List(BARS) { 1 + r.nextInt(4) } } }
-    Canvas(Modifier.size(width = 104.dp, height = 40.dp)) {
+    Canvas(Modifier.size(width = 88.dp, height = 40.dp)) {
         val unit = size.width / widths.sumOf { it + 1 }
         var x = 0f
         widths.forEach { w ->

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.mukhda.data.audio.Media3ClipPlayer
 import com.mukhda.data.db.MukhdaDatabase
+import com.mukhda.data.round.RoomRoundHistory
 import com.mukhda.data.round.RoundDao
 import com.mukhda.data.round.TryDao
 import com.mukhda.data.search.BundledSearchIndexAsset
@@ -12,6 +13,7 @@ import com.mukhda.data.search.SearchIndexAsset
 import com.mukhda.data.search.SearchIndexDao
 import com.mukhda.data.show.FirebaseShowRepository
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.round.RoundHistory
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.show.ShowRepository
 import dagger.Binds
@@ -67,4 +69,7 @@ abstract class DataBindings {
 
     @Binds
     abstract fun showRepository(repository: FirebaseShowRepository): ShowRepository
+
+    @Binds
+    abstract fun roundHistory(history: RoomRoundHistory): RoundHistory
 }

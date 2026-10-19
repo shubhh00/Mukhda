@@ -17,6 +17,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.mukhda.app.R
@@ -50,19 +51,19 @@ fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, modifier: Modifier =
     }
 }
 
-/** "12 HOUSEFULL" in marigold on an ink banner, with a ticket stub. */
+/** "12 DAYS HOUSEFULL" in marigold on the buttons' red, with a ticket stub. */
 @Composable
 private fun StreakBadge(streak: Int) {
     val colors = MukhdaTheme.colors
     Row(
         modifier = Modifier
-            .background(colors.ink)
+            .background(colors.buttonRed)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         TicketIcon()
-        Text(stringResource(R.string.streak_badge, streak), style = MukhdaTheme.typography.label, color = colors.marigold)
+        Text(pluralStringResource(R.plurals.days_housefull, streak, streak).uppercase(), style = MukhdaTheme.typography.label, color = colors.marigold)
     }
 }
 

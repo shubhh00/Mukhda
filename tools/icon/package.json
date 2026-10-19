@@ -2,7 +2,7 @@
   "name": "mukhda-icon",
   "private": true,
   "type": "module",
-  "description": "Generates the app icon (adaptive foreground + Play Store PNG) from the bundled Yatra One font.",
+  "description": "Generates the app icon (adaptive background, foreground and Play Store PNG): मुखड़ा in Yatra One on the stage curtain.",
   "scripts": {
     "generate": "node generate.mjs"
   },

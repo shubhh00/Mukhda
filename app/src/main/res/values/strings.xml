@@ -11,7 +11,11 @@
 
     <!-- Game screen -->
     <string name="show_line">SHOW NO. %1$d · %2$s</string>
-    <string name="streak_badge">%1$d HOUSEFULL</string>
+    <!-- The streak: days in a row with a try in any tier. -->
+    <plurals name="days_housefull">
+        <item quantity="one">%1$d day housefull</item>
+        <item quantity="other">%1$d days housefull</item>
+    </plurals>
     <string name="clip_of">Clip %1$d of %2$d</string>
     <string name="clip_0">0.5 sec</string>
     <string name="clip_1">1 sec</string>
@@ -85,15 +89,8 @@
 
     <!-- Ticket -->
     <string name="ticket_heading">Your ticket for today</string>
-    <string name="admit_one">Admit one</string>
-    <string name="ticket_show">Show</string>
-    <string name="ticket_date">Date</string>
-    <string name="ticket_screen">Screen</string>
-    <string name="ticket_show_no">No. %1$d</string>
     <string name="ticket_on">On the %1$s</string>
-    <string name="ticket_streak">%1$d days</string>
-    <string name="ticket_streak_label">Housefull streak</string>
-    <string name="ticket_tagline">Guess the song from one second</string>
+    <string name="ticket_tagline">Five songs.\nA new show every day.</string>
     <string name="ticket_get_it">Get it on Google Play</string>
     <string name="ticket_no_spoilers">No song or film name on the ticket</string>
     <string name="share">Share</string>

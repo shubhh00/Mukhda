@@ -3,7 +3,9 @@ import { getFirestore } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { type CallableRequest, HttpsError, onCall } from "firebase-functions/v2/https";
+import { onMessagePublished } from "firebase-functions/v2/pubsub";
 import { onSchedule } from "firebase-functions/v2/scheduler";
+import { BILLING_TOPIC, type BudgetNotification, overBudget, stopBilling } from "./billing.ts";
 import { closeDay as closeDayImpl } from "./close.ts";
 import { itunesPreview } from "./previews.ts";
 import { withinRateLimit } from "./rate-limit.ts";
@@ -63,4 +65,16 @@ export const submitTry = onCall(async (request) => {
 /** Five past midnight IST: yesterday's open rounds become UNFINISHED. */
 export const closeDay = onSchedule({ schedule: "5 0 * * *", timeZone: "Asia/Kolkata" }, async () => {
   await closeDayImpl(getFirestore(), new Date());
+});
+
+/**
+ * The cost cap: the project's budget posts to [BILLING_TOPIC], and once the month's spending
+ * reaches the budget, billing is switched off, which stops every paid service.
+ */
+export const billingCap = onMessagePublished(BILLING_TOPIC, async (event) => {
+  const notice = event.data.message.json as BudgetNotification;
+  if (!overBudget(notice)) return;
+  const projectId = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
+  if (!projectId) throw new Error("No project id in the environment");
+  await stopBilling(projectId);
 });

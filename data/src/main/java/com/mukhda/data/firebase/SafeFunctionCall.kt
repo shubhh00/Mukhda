@@ -1,6 +1,7 @@
 package com.mukhda.data.firebase
 
 import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.FirebaseFunctionsException.Code
 import com.mukhda.domain.DataError
@@ -35,8 +36,18 @@ suspend fun <T> safeFunctionCall(call: suspend () -> T): Outcome<T, TryError> = 
     Outcome.Error(TryError.Data(e.networkCause()))
 }
 
+/**
+ * How Firebase Auth words a sign-in the server won't take any more: a refresh token it doesn't
+ * know (from another Firebase, or revoked), an expired one, a deleted or disabled user.
+ */
+private val SIGNED_OUT = Regex("INVALID_REFRESH_TOKEN|TOKEN_EXPIRED|USER_NOT_FOUND|USER_DISABLED|INVALID_ID_TOKEN")
+
 /** What went wrong underneath [this], from its chain of causes. */
 fun Throwable.networkCause(): DataError.Network {
+    // A sign-in the server rejects is "signed out", so the caller can sign in afresh and retry.
+    if (generateSequence(this) { it.cause }.any { it is FirebaseAuthException || SIGNED_OUT.containsMatchIn(it.message.orEmpty()) }) {
+        return DataError.Network.UNAUTHORIZED
+    }
     generateSequence(this) { it.cause.takeIf { cause -> cause !== it } }.forEach { cause ->
         when (cause) {
             is InterruptedIOException -> return DataError.Network.REQUEST_TIMEOUT

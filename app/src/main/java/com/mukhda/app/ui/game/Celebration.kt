@@ -26,6 +26,8 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 private const val BURST_MS = 1_900
+/** Rose petals among the marigolds. */
+private val ROSE = Color(0xFFD63E7A)
 
 /** One pop of a burst: when it goes off (a fraction of the burst), how many petals, how hard. */
 private class Pop(val at: Float, val petals: Int, val strength: Float)
@@ -72,7 +74,7 @@ private class Piece(
 fun PetalBurst(trigger: Int, verdict: Verdict, origin: () -> Offset, animationsEnabled: Boolean, modifier: Modifier = Modifier) {
     if (trigger == 0 || !animationsEnabled) return
     val colors = MukhdaTheme.colors
-    val palette = remember(colors) { listOf(colors.marigold, colors.marigoldDeep, colors.marigold, colors.red, colors.tierExpert) }
+    val palette = remember(colors) { listOf(colors.marigold, colors.marigoldDeep, colors.marigold, colors.red, ROSE) }
     val pieces = remember(trigger, verdict, palette) {
         val random = Random(trigger)
         fun piece(start: Float, strength: Float) = Piece(

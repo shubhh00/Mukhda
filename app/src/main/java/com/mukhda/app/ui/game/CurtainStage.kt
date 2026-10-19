@@ -3,6 +3,7 @@ package com.mukhda.app.ui.game
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -35,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -45,6 +47,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -61,7 +64,9 @@ import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaColors
 import com.mukhda.app.ui.theme.MukhdaTheme
 import com.mukhda.app.ui.theme.drawBehindKeyed
+import kotlin.math.PI
 import kotlin.math.min
+import kotlin.math.sin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -69,6 +74,13 @@ private const val PRESS_MS = 90
 private const val SWAY_OUT_MS = 250
 private const val SWAY_BACK_MS = 300
 private const val GLOW_MS = 120
+/** One lap of the light running along the footlights. */
+private const val CHASE_MS = 1_400
+/** Lit stretches running along the row at once. */
+private const val CHASE_WAVES = 3
+private val FootlightsHeight = 18.dp
+private val BulbSpacing = 22.dp
+private val BulbRadius = 2.5.dp
 private const val MARQUEE_FADE_MS = 180
 private val SwayDistance = 5.dp
 private val ValanceHeight = 24.dp
@@ -139,6 +151,18 @@ fun CurtainStage(
         animationSpec = tween(if (animationsEnabled) GLOW_MS else 0),
         label = "footlights",
     )
+    // While sound plays, a light runs along the footlights and the glow over them breathes with
+    // it. It only runs while playing, and is read in the draw phase, so it never recomposes.
+    val chase = remember { Animatable(0f) }
+    LaunchedEffect(isPlaying, animationsEnabled) {
+        chase.snapTo(0f)
+        if (isPlaying && animationsEnabled) {
+            while (true) {
+                chase.animateTo(1f, tween(CHASE_MS, easing = LinearEasing))
+                chase.snapTo(0f)
+            }
+        }
+    }
 
     Box(modifier = modifier) {
         Box(
@@ -201,10 +225,22 @@ fun CurtainStage(
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
                         .fillMaxHeight(0.42f)
-                        .graphicsLayer { alpha = glow }
+                        .graphicsLayer { alpha = glow * (0.82f + 0.18f * sin(chase.value * 2 * PI.toFloat() * 2)) }
                         .drawBehindKeyed(colors.marigold) {
                             drawRect(Brush.verticalGradient(listOf(colors.marigold.copy(alpha = 0f), colors.marigold.copy(alpha = 0.55f))))
                         },
+                )
+                Footlights(
+                    colors = colors,
+                    lit = { glow },
+                    chase = { chase.value },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .height(FootlightsHeight)
+                        // Once the poster is up they'd dot the picture: they go with the curtain
+                        // and come back only while the song plays.
+                        .graphicsLayer { alpha = maxOf(1f - openness.value, glow) },
                 )
                 if (!revealed || openness.value < 1f) {
                     Box(Modifier.graphicsLayer { alpha = 1f - openness.value }) {
@@ -218,6 +254,44 @@ fun CurtainStage(
 }
 
 private fun Density.swayOffset(progress: Float): Float = progress * SwayDistance.toPx()
+
+/**
+ * A row of bulbs along the foot of the stage: dim while it's quiet, lit while sound plays
+ * ([lit] 0..1), with a light running along them ([chase], one lap per 0..1). Read only in the
+ * draw phase.
+ */
+@Composable
+private fun Footlights(colors: MukhdaColors, lit: () -> Float, chase: () -> Float, modifier: Modifier) {
+    Box(
+        modifier.drawBehind {
+            val spacing = BulbSpacing.toPx()
+            val radius = BulbRadius.toPx()
+            val count = (size.width / spacing).toInt().coerceAtLeast(1)
+            val first = (size.width - (count - 1) * spacing) / 2
+            val y = size.height - radius * 2f
+            val on = lit()
+            val lap = chase()
+            for (i in 0 until count) {
+                // Each bulb is brightest as the running light passes it, about two bulbs wide.
+                val wave = (sin((lap * count - i) / count * 2 * PI.toFloat() * CHASE_WAVES) + 1f) / 2f
+                val brightness = on * (0.65f + 0.35f * wave)
+                val center = Offset(first + i * spacing, y)
+                if (brightness > 0.01f) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            listOf(colors.marigold.copy(alpha = 0.55f * brightness), colors.marigold.copy(alpha = 0f)),
+                            center = center,
+                            radius = radius * 4.5f,
+                        ),
+                        radius = radius * 4.5f,
+                        center = center,
+                    )
+                }
+                drawCircle(lerp(colors.velvetLight, colors.marigold, 0.25f + 0.75f * brightness), radius, center)
+            }
+        },
+    )
+}
 
 /** The soundtrack's cover, filling [modifier]'s space. Falls back to the title on velvet. */
 @Composable

@@ -18,6 +18,7 @@ import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.Verdict
 import com.mukhda.domain.round.RoundState
+import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
 import kotlinx.coroutines.Dispatchers
@@ -52,7 +53,9 @@ class GameViewModelTest {
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex, player)
+    private val history = FakeRoundHistory()
+
+    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex, player, history)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -359,6 +362,29 @@ class GameViewModelTest {
         val vm = viewModel()
         vm.onAction(GameAction.OnSkipClick)
         assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
+    fun `the streak counts the days played up to the show date`() = runTest(dispatcher) {
+        val today = show.date
+        history.rounds.value = listOf(
+            Streak.DayRound(today.minusDays(1), triesUsed = 2),
+            Streak.DayRound(today.minusDays(2), triesUsed = 5),
+            // A gap: three days ago untouched, so four days ago doesn't count.
+            Streak.DayRound(today.minusDays(4), triesUsed = 1),
+        )
+        val vm = viewModel()
+        // Today has no try yet, and that doesn't break it.
+        assertThat(vm.state.value.streak).isEqualTo(2)
+        // A confirmed try today, saved on the phone, extends it at once.
+        history.rounds.value = history.rounds.value + Streak.DayRound(today, triesUsed = 1)
+        assertThat(vm.state.value.streak).isEqualTo(3)
+    }
+
+    @Test
+    fun `a round opened but never tried doesn't count for the streak`() = runTest(dispatcher) {
+        history.rounds.value = listOf(Streak.DayRound(show.date.minusDays(1), triesUsed = 0))
+        assertThat(viewModel().state.value.streak).isEqualTo(0)
     }
 
     @Test

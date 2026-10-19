@@ -25,6 +25,17 @@ class SafeFunctionCallTest {
     }
 
     @Test
+    fun `a sign-in the server doesn't know is signed out, so it can be renewed`() = runTest {
+        // What the SDK threw on the phone still signed in from the emulator.
+        val stale = ExecutionException(
+            "1 out of 2 underlying tasks failed",
+            RuntimeException("An internal error has occurred. [ INVALID_REFRESH_TOKEN ]"),
+        )
+        val result = safeFunctionCall<Unit> { throw stale }
+        assertThat(result).isEqualTo(Outcome.Error(TryError.Data(DataError.Network.UNAUTHORIZED)))
+    }
+
+    @Test
     fun `causes underneath decide the error`() {
         assertThat(ExecutionException(RuntimeException(IOException("reset"))).networkCause()).isEqualTo(DataError.Network.NO_INTERNET)
         assertThat(RuntimeException(SocketTimeoutException()).networkCause()).isEqualTo(DataError.Network.REQUEST_TIMEOUT)

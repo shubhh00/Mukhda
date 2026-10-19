@@ -15,6 +15,8 @@ import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.onFailure
 import com.mukhda.domain.onSuccess
+import com.mukhda.domain.round.RoundHistory
+import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.search.SongSearcher
@@ -31,6 +33,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
 
@@ -40,6 +43,7 @@ class GameViewModel @Inject constructor(
     private val showRepository: ShowRepository,
     private val songIndex: SongIndexDataSource,
     private val clipPlayer: ClipPlayer,
+    private val roundHistory: RoundHistory,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GameState(guessText = savedStateHandle[KEY_GUESS_TEXT] ?: ""))
@@ -54,6 +58,9 @@ class GameViewModel @Inject constructor(
     private var searchJob: Job? = null
     private var playJob: Job? = null
 
+    /** Days the player made a try on, from the rounds kept on the phone, for the streak. */
+    private var playedDays: Set<LocalDate> = emptySet()
+
     /** A try per tier that hasn't reached the server yet; the repository keeps it and resends it. */
     private val sending = mutableMapOf<Tier, String?>()
     private var resendJob: Job? = null
@@ -62,6 +69,13 @@ class GameViewModel @Inject constructor(
         // Load the search index now so the first keystroke in the guess box is instant.
         // A failure here is retried by the first search, so it's ignored.
         viewModelScope.launch { songIndex.prepare() }
+        // The streak follows the saved rounds, so a confirmed try today extends it at once.
+        viewModelScope.launch {
+            roundHistory.dayRounds().collect { rounds ->
+                playedDays = Streak.playedDates(rounds)
+                publishStreak()
+            }
+        }
         loadShow()
     }
 
@@ -138,6 +152,7 @@ class GameViewModel @Inject constructor(
                 showNo = show.showNo,
                 dateLabel = show.date.toDateLabel(),
                 endsAtEpochMs = show.endsAt.toEpochMilli(),
+                streak = Streak.current(playedDays, show.date),
                 rounds = show.rounds.mapValues { (tier, round) ->
                     val ui = round.toRoundUi(songs)
                     if (tier in sending) ui.withSending(sending[tier]?.let(songs::get)) else ui
@@ -145,6 +160,12 @@ class GameViewModel @Inject constructor(
             )
         }
         refreshSuggestions()
+    }
+
+    /** Counted up to the server's show date, never the phone's: today without a try doesn't break it. */
+    private fun publishStreak() {
+        val today = show?.date ?: return
+        _state.update { it.copy(streak = Streak.current(playedDays, today)) }
     }
 
     private fun selectTier(action: GameAction.OnTierClick) {

@@ -116,8 +116,30 @@ class FirebaseShowRepository @Inject constructor(
         }
     }
 
+    /**
+     * A call the server turns away as signed out (an expired session, or a sign-in it no longer
+     * knows) is retried once: first with a fresh token, and if the sign-in itself is gone, with a
+     * new anonymous one (AGENTS.md §8). Anything else comes back as it is.
+     */
+    private suspend fun <T> callSignedIn(call: suspend () -> T): Outcome<T, TryError> {
+        val first = safeFunctionCall(call)
+        if (first !is Outcome.Error || first.error != TryError.Data(DataError.Network.UNAUTHORIZED)) return first
+        val refreshed = try {
+            auth.currentUser?.getIdToken(true)?.await() != null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            false
+        }
+        if (!refreshed) {
+            auth.signOut()
+            signIn()?.let { return Outcome.Error(TryError.Data(it)) }
+        }
+        return safeFunctionCall(call)
+    }
+
     private suspend fun fetchShow(): Outcome<Show, DataError> {
-        val fetched = safeFunctionCall {
+        val fetched = callSignedIn {
             decodeCallable<ShowDto>(functions.getHttpsCallable(GET_SHOW).call().await().getData()).toShow()
         }
         return when (fetched) {
@@ -137,7 +159,7 @@ class FirebaseShowRepository @Inject constructor(
     private suspend fun send(attempt: TryEntity): Outcome<RoundState, TryError> {
         var retries = 0
         while (true) {
-            val sent = safeFunctionCall {
+            val sent = callSignedIn {
                 decodeCallable<SubmitTryDto>(functions.getHttpsCallable(SUBMIT_TRY).call(attempt.toRequest()).await().getData())
             }
             when {
