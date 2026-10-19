@@ -39,7 +39,7 @@ fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, modifier: Modifier =
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(stringResource(R.string.wordmark), style = type.wordmark, color = colors.red)
+            Text(stringResource(R.string.wordmark), style = type.brand, color = colors.red)
             if (streak > 0) StreakBadge(streak)
         }
         Text(

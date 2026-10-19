@@ -186,7 +186,7 @@ fun Ticket(ticket: TicketUi, modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth().padding(start = 18.dp, end = 18.dp, top = 14.dp, bottom = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Text(stringResource(R.string.wordmark), style = type.wordmark.copy(fontSize = 34.sp), color = colors.red)
+                Text(stringResource(R.string.wordmark), style = type.brand, color = colors.red)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Box(Modifier.size(6.dp).background(tierColor, CircleShape))
                     Text(stringResource(ticket.tier.labelRes).uppercase(), style = type.label, color = colors.ink)

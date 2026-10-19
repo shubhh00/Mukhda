@@ -1,7 +1,8 @@
 <resources>
     <string name="app_name">Mukhda</string>
 
-    <string name="wordmark" translatable="false">MUKHDA</string>
+    <!-- The wordmark in the header and on the ticket, in Hindi like the app icon. -->
+    <string name="wordmark" translatable="false">मुखड़ा</string>
 
     <string name="tier_easy">Easy</string>
     <string name="tier_medium">Medium</string>
