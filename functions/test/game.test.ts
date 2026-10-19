@@ -180,3 +180,12 @@ test("closeDay marks yesterday's open rounds unfinished and leaves the rest", as
 test("no show scheduled is an error, not an empty show", async () => {
   await assert.rejects(getShow(db(), UID, new Date("2026-11-01T09:00:00Z"), noLookup), /No show scheduled/);
 });
+
+test("a 31st try in a minute is turned away", async () => {
+  for (let i = 0; i < 4; i++) await skip();
+  // Fill the minute up to the limit with requests the round has already seen.
+  const id = requestId();
+  await skip(NOON, id);
+  for (let i = 0; i < 25; i++) await skip(NOON, id);
+  await assert.rejects(skip(NOON, id), /Too many tries/);
+});

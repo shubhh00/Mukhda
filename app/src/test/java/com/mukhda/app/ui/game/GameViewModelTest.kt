@@ -21,6 +21,7 @@ import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -385,6 +386,42 @@ class GameViewModelTest {
     fun `a round opened but never tried doesn't count for the streak`() = runTest(dispatcher) {
         history.rounds.value = listOf(Streak.DayRound(show.date.minusDays(1), triesUsed = 0))
         assertThat(viewModel().state.value.streak).isEqualTo(0)
+    }
+
+    @Test
+    fun `a skip shows at once, before the server answers`() = runTest(dispatcher) {
+        show.answerGate = CompletableDeferred()
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        val waiting = vm.state.value.round!!
+        assertThat((waiting.slots.first() as TrySlotUi.Used).stamp).isEqualTo(Stamp.SKIPPED)
+        assertThat(waiting.currentStep).isEqualTo(1)
+        // The buttons stay as they are; a second tap meanwhile is ignored.
+        assertThat(vm.state.value.canSkip).isTrue()
+        vm.onAction(GameAction.OnSkipClick)
+        show.answerGate!!.complete(Unit)
+        assertThat(vm.state.value.round!!.slots.count { it is TrySlotUi.Used }).isEqualTo(1)
+        assertThat(show.requestIds).hasSize(1)
+    }
+
+    @Test
+    fun `a guess shows as sending until its verdict comes back`() = runTest(dispatcher) {
+        show.answerGate = CompletableDeferred()
+        val vm = viewModel()
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnSuggestionClick("s7"))
+        vm.onAction(GameAction.OnGuessClick)
+        assertThat(vm.state.value.round!!.slots.first()).isInstanceOf<TrySlotUi.Sending>()
+        show.answerGate!!.complete(Unit)
+        assertThat((vm.state.value.round!!.slots.first() as TrySlotUi.Used).stamp).isEqualTo(Stamp.WRONG)
+    }
+
+    @Test
+    fun `a skip the server refuses is taken back`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Rule(GameError.TRIES_EXHAUSTED)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(vm.state.value.round!!.slots.none { it is TrySlotUi.Used }).isTrue()
     }
 
     @Test

@@ -8,7 +8,7 @@ import { onSchedule } from "firebase-functions/v2/scheduler";
 import { BILLING_TOPIC, type BudgetNotification, overBudget, stopBilling } from "./billing.ts";
 import { closeDay as closeDayImpl } from "./close.ts";
 import { itunesPreview } from "./previews.ts";
-import { withinRateLimit } from "./rate-limit.ts";
+import { RateLimitedError } from "./rate-limit.ts";
 import { NoShowError, getShow as getShowImpl } from "./show.ts";
 import { GameErrorException, submitTry as submitTryImpl } from "./tries.ts";
 import { parseSubmitTry } from "./validate.ts";
@@ -37,6 +37,7 @@ function uidOf(request: CallableRequest): string {
  */
 function toHttpsError(error: unknown): HttpsError {
   if (error instanceof HttpsError) return error;
+  if (error instanceof RateLimitedError) return new HttpsError("resource-exhausted", error.message);
   if (error instanceof GameErrorException) return new HttpsError("failed-precondition", error.reason, { reason: error.reason });
   if (error instanceof NoShowError) {
     logger.error(error.message);
@@ -61,11 +62,7 @@ export const submitTry = onCall(gameCall, async (request) => {
   const uid = uidOf(request);
   const payload = parseSubmitTry(request.data);
   try {
-    const now = new Date();
-    if (!(await withinRateLimit(getFirestore(), uid, now))) {
-      throw new HttpsError("resource-exhausted", "Too many tries; wait a minute");
-    }
-    return await submitTryImpl(getFirestore(), uid, payload, now, itunesPreview);
+    return await submitTryImpl(getFirestore(), uid, payload, new Date(), itunesPreview);
   } catch (error) {
     throw toHttpsError(error);
   }

@@ -12,11 +12,14 @@ import com.mukhda.domain.audio.ClipPlayer
 import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.RoundStatus
 import com.mukhda.domain.model.Tier
+import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.onFailure
 import com.mukhda.domain.onSuccess
 import com.mukhda.domain.round.RoundHistory
+import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.Streak
+import com.mukhda.domain.round.TryRecord
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.search.SongSearcher
@@ -25,6 +28,9 @@ import com.mukhda.domain.show.ShowRepository
 import com.mukhda.domain.show.TryError
 import com.mukhda.domain.show.isTransient
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.LocalDate
+import java.util.UUID
+import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
@@ -33,9 +39,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.util.UUID
-import javax.inject.Inject
 
 @HiltViewModel
 class GameViewModel @Inject constructor(
@@ -229,36 +232,59 @@ class GameViewModel @Inject constructor(
         val show = show ?: return
         val state = _state.value
         val tier = state.selectedTier
+        val before = show.rounds[tier] ?: return
         if (state.isSubmitting || state.round?.isOpen != true) return
 
         stopPlaying()
+        // One requestId per try; the server ignores repeats of the same id.
+        val requestId = UUID.randomUUID().toString()
+        // Shown at once, before the server answers. A skip is always a skip, so it lands as one
+        // and the ladder moves on; a guess shows as sending until its verdict comes back.
+        if (type == TryType.SKIP) {
+            (before.apply(TryRecord(requestId, TryType.SKIP, null, TryResult.SKIPPED)) as? Outcome.Success)?.data?.let { skipped ->
+                this.show = show.copy(rounds = show.rounds + (tier to skipped))
+            }
+        } else {
+            sending[tier] = songId
+        }
+        clearGuess()
         _state.update { it.copy(isSubmitting = true) }
+        publishShow()
+        if (type == TryType.SKIP) preloadCurrentClip()
+
         viewModelScope.launch {
-            // One requestId per try; the server ignores repeats of the same id.
-            val result = showRepository.submitTry(show.date, tier, UUID.randomUUID().toString(), type, songId)
+            val result = showRepository.submitTry(show.date, tier, requestId, type, songId)
             _state.update { it.copy(isSubmitting = false) }
             when (result) {
                 is Outcome.Success -> {
-                    this@GameViewModel.show = show.copy(rounds = show.rounds + (tier to result.data))
-                    clearGuess()
-                    publishShow()
+                    sending.remove(tier)
+                    showRound(tier, result.data)
                     if (result.data.status == RoundStatus.WON) result.data.verdict?.let { _events.send(GameEvent.Celebrate(it)) }
-                    // A miss moves the ladder up a step: the next clip is longer.
-                    preloadCurrentClip()
+                    // A missed guess moves the ladder up a step: the next clip is longer. A skip
+                    // already moved it, and got that clip ready, when it was shown.
+                    if (type == TryType.GUESS) preloadCurrentClip()
                 }
                 is Outcome.Error -> if (result.error.isTransient) {
                     // It never reached the server: the repository keeps it and sends it again,
                     // with the same requestId, so it shows as sending and is retried until through.
                     sending[tier] = songId
-                    clearGuess()
-                    publishShow()
+                    showRound(tier, before)
                     resendWhenBack()
                     _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.try_queued)))
                 } else {
+                    // Refused: back to the round as it was, and the server has the last word.
+                    sending.remove(tier)
+                    showRound(tier, before)
                     handleTryError(result.error)
                 }
             }
         }
+    }
+
+    /** Puts [round] in the show for [tier] and redraws. */
+    private fun showRound(tier: Tier, round: RoundState) {
+        show = show?.let { it.copy(rounds = it.rounds + (tier to round)) }
+        publishShow()
     }
 
     /** Retries the waiting tries, waiting longer each time, until the show loads again. */

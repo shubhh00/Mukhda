@@ -12,6 +12,7 @@ import {
 } from "./model.ts";
 import type { PreviewLookup } from "./previews.ts";
 import { currentStep, judge, statsAfterRound, statusAfter } from "./rules.ts";
+import { type RateCount, RateLimitedError, countCall } from "./rate-limit.ts";
 import { activeSong, revealOf, roundId, statsId } from "./show.ts";
 import { istDate } from "./time.ts";
 
@@ -26,10 +27,26 @@ export class GameErrorException extends Error {
 
 /** The guessed song's film, from the answer pool or the wider search catalogue; null if it's neither. */
 async function filmOf(db: Firestore, songId: string): Promise<string | null> {
-  const [song, catalog] = await Promise.all([db.doc(`songs/${songId}`).get(), db.doc(`catalog/${songId}`).get()]);
-  if (song.exists) return (song.data() as SongDoc).filmId;
-  if (catalog.exists) return (catalog.data() as CatalogDoc).filmId;
+  const [song, catalog] = await db.getAll(db.doc(`songs/${songId}`), db.doc(`catalog/${songId}`));
+  if (song?.exists) return (song.data() as SongDoc).filmId;
+  if (catalog?.exists) return (catalog.data() as CatalogDoc).filmId;
   return null;
+}
+
+/** How long a song read is reused: songs change only when curation republishes them. */
+const SONG_CACHE_MS = 10 * 60 * 1000;
+const songCache = new Map<string, { song: SongDoc; at: number }>();
+
+/**
+ * A round's answer song. A warm instance reads each song once and keeps it a while, which saves
+ * a database round trip on nearly every try.
+ */
+async function answerSong(db: Firestore, songId: string, now: number): Promise<SongDoc> {
+  const hit = songCache.get(songId);
+  if (hit && now - hit.at < SONG_CACHE_MS) return hit.song;
+  const song = (await db.doc(`songs/${songId}`).get()).data() as SongDoc;
+  songCache.set(songId, { song, at: now });
+  return song;
 }
 
 /**
@@ -42,18 +59,24 @@ export async function submitTry(db: Firestore, uid: string, request: SubmitTryRe
   const { date, tier, requestId, type } = request;
   const roundRef = db.doc(`rounds/${roundId(uid, date, tier)}`);
   const statsRef = db.doc(`songStats/${statsId(date, tier)}`);
+  const rateRef = db.doc(`rateLimits/${uid}`);
 
   // Reads that can't change under the transaction, and the network check for a tier's first
-  // song, happen before it.
-  const existing = (await roundRef.get()).data() as RoundDoc | undefined;
-  const answer = existing
-    ? ((await db.doc(`songs/${existing.songId}`).get()).data() as SongDoc)
-    : await activeSong(db, date, tier, now, lookup);
-  const guessFilm = type === "GUESS" && request.songId ? await filmOf(db, request.songId) : null;
+  // song, happen before it, side by side where they can.
+  const [existingSnap, guessFilm] = await Promise.all([
+    roundRef.get(),
+    type === "GUESS" && request.songId ? filmOf(db, request.songId) : Promise.resolve(null),
+  ]);
+  const existing = existingSnap.data() as RoundDoc | undefined;
+  const answer = existing ? await answerSong(db, existing.songId, now.getTime()) : await activeSong(db, date, tier, now, lookup);
 
   return db.runTransaction(async (tx) => {
-    const round = (await tx.get(roundRef)).data() as RoundDoc | undefined;
-    const stats = (await tx.get(statsRef)).data() as SongStatsDoc | undefined;
+    const [roundSnap, statsSnap, rateSnap] = await tx.getAll(roundRef, statsRef, rateRef);
+    const round = roundSnap?.data() as RoundDoc | undefined;
+    const stats = statsSnap?.data() as SongStatsDoc | undefined;
+    const counted = countCall(rateSnap?.data() as RateCount | undefined, now);
+    if (!counted) throw new RateLimitedError();
+    tx.set(rateRef, counted);
     const tries = round?.tries ?? [];
 
     const seen = tries.find((t) => t.requestId === requestId);

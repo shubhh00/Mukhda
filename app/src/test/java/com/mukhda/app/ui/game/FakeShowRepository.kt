@@ -12,6 +12,7 @@ import com.mukhda.domain.round.TryRecord
 import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
 import com.mukhda.domain.show.TryError
+import kotlinx.coroutines.CompletableDeferred
 import java.time.Instant
 import java.time.LocalDate
 
@@ -23,6 +24,8 @@ class FakeShowRepository : ShowRepository {
     var loadError: DataError? = null
     var nextTryError: TryError? = null
     var judge: (songId: String) -> TryResult = { TryResult.WRONG }
+    /** When set, tries wait for it before the "server" answers, to see the screen in between. */
+    var answerGate: CompletableDeferred<Unit>? = null
     val requestIds = mutableListOf<String>()
     var loads = 0
         private set
@@ -44,6 +47,7 @@ class FakeShowRepository : ShowRepository {
         songId: String?,
     ): Outcome<RoundState, TryError> {
         requestIds += requestId
+        answerGate?.await()
         nextTryError?.let {
             nextTryError = null
             return Outcome.Error(it)

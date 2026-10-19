@@ -14,6 +14,12 @@ if (file("google-services.json").exists()) {
     apply(plugin = "com.google.firebase.crashlytics")
 }
 
+/**
+ * `-Pmukhda.appcheck=true` gives debug builds App Check with a debug token, for testing the real
+ * server once it requires App Check. Otherwise debug builds carry no App Check at all.
+ */
+val debugAppCheck = providers.gradleProperty("mukhda.appcheck").orElse("false").get().toBoolean()
+
 android {
     namespace = "com.mukhda.app"
     compileSdk {
@@ -60,6 +66,11 @@ android {
     testOptions {
         unitTests.all { it.useJUnitPlatform() }
     }
+    sourceSets {
+        getByName("debug") {
+            kotlin.srcDir(if (debugAppCheck) "src/debugAppCheck/java" else "src/debugNoAppCheck/java")
+        }
+    }
 }
 
 dependencies {
@@ -92,9 +103,11 @@ dependencies {
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.crashlytics)
     // App Check: Play Integrity proves a release build is the genuine app from Play; debug builds
-    // use a debug token registered in the Firebase console instead.
-    implementation(libs.firebase.appcheck.playintegrity)
-    debugImplementation(libs.firebase.appcheck.debug)
+    // use a debug token registered in the Firebase console instead. Only the builds that use App
+    // Check carry it: without a provider the SDK still fetches (and fails) a token before every call.
+    releaseImplementation(libs.firebase.appcheck.playintegrity)
+    "profileImplementation"(libs.firebase.appcheck.playintegrity)
+    if (debugAppCheck) debugImplementation(libs.firebase.appcheck.debug)
 
     testImplementation(platform(libs.junit5.bom))
     testImplementation(libs.junit5.jupiter)

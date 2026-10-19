@@ -32,8 +32,10 @@ data class GameState(
 ) {
     val round: RoundUi? get() = rounds[selectedTier]
     val isDropdownOpen: Boolean get() = suggestions.isNotEmpty() && selectedSong == null && !suggestionsDismissed
-    val canGuess: Boolean get() = round?.isOpen == true && round?.isSending != true && selectedSong != null && !isSubmitting
-    val canSkip: Boolean get() = round?.isOpen == true && round?.isSending != true && !isSubmitting
+    // Not tied to isSubmitting: a skip shows at once, so the buttons don't flicker off while the
+    // server confirms it (a tap in that moment is ignored).
+    val canGuess: Boolean get() = round?.isOpen == true && round?.isSending != true && selectedSong != null
+    val canSkip: Boolean get() = round?.isOpen == true && round?.isSending != true
 
     /** The tier to suggest after this one: the next not yet started, else the next still open. */
     val nextTier: Tier?
