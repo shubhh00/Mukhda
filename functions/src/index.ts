@@ -16,6 +16,15 @@ import { parseSubmitTry } from "./validate.ts";
 initializeApp();
 setGlobalOptions({ region: "asia-south1", maxInstances: 10 });
 
+/**
+ * App Check: when on, only the genuine app may call the game (Play Integrity on release builds, a
+ * registered debug token on development ones). Off until the app is on Play, where Play Integrity
+ * can first vouch for it; switch it on with the console steps at publish. The local emulator
+ * can't check tokens, so it's never enforced there.
+ */
+const APP_CHECK_ENFORCED = false;
+const gameCall = { enforceAppCheck: APP_CHECK_ENFORCED && process.env.FUNCTIONS_EMULATOR !== "true" };
+
 /** The caller's Firebase UID; every call needs the app's anonymous sign-in. */
 function uidOf(request: CallableRequest): string {
   if (!request.auth) throw new HttpsError("unauthenticated", "Sign-in required");
@@ -38,7 +47,7 @@ function toHttpsError(error: unknown): HttpsError {
 }
 
 /** Today's show for the caller (AGENTS.md §7). */
-export const getShow = onCall(async (request) => {
+export const getShow = onCall(gameCall, async (request) => {
   const uid = uidOf(request);
   try {
     return await getShowImpl(getFirestore(), uid, new Date(), itunesPreview);
@@ -48,7 +57,7 @@ export const getShow = onCall(async (request) => {
 });
 
 /** One guess or skip (AGENTS.md §7). */
-export const submitTry = onCall(async (request) => {
+export const submitTry = onCall(gameCall, async (request) => {
   const uid = uidOf(request);
   const payload = parseSubmitTry(request.data);
   try {

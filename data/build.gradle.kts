@@ -18,6 +18,7 @@ android {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false")
+        buildConfigField("boolean", "USE_APP_CHECK_DEBUG", "false")
     }
     buildTypes {
         // Debug builds talk to the Firebase emulators on the laptop, over `adb reverse` (see
@@ -25,6 +26,10 @@ android {
         debug {
             val useEmulator = providers.gradleProperty("mukhda.emulator").orElse("true").get().toBoolean()
             buildConfigField("boolean", "USE_FIREBASE_EMULATOR", useEmulator.toString())
+            // `-Pmukhda.appcheck=true` sends a debug App Check token (registered in the console) to
+            // the real server; off by default until App Check is switched on at publish.
+            val useAppCheck = providers.gradleProperty("mukhda.appcheck").orElse("false").get().toBoolean()
+            buildConfigField("boolean", "USE_APP_CHECK_DEBUG", (useAppCheck && !useEmulator).toString())
         }
     }
     buildFeatures {
