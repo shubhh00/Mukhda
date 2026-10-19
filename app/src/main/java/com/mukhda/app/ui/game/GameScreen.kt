@@ -35,8 +35,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,12 +46,16 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +73,7 @@ import com.mukhda.app.ui.theme.drawBehindKeyed
 import com.mukhda.app.ui.theme.paper
 import com.mukhda.app.ui.theme.rememberAnimationsEnabled
 import com.mukhda.domain.model.Tier
+import com.mukhda.domain.model.Verdict
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -77,6 +84,13 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel()) {
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val animationsEnabled = rememberAnimationsEnabled()
+    // Counts wins this session; each new one pops a burst of petals from the stage's middle,
+    // as big as the verdict.
+    var celebrations by remember { mutableIntStateOf(0) }
+    var celebrated by remember { mutableStateOf(Verdict.HIT) }
+    val stageCenter = remember { mutableStateOf(Offset.Unspecified) }
 
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
@@ -86,19 +100,42 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel()) {
                 snackbar.currentSnackbarData?.dismiss()
                 snackbar.showSnackbar(event.message.asString(context))
             }
+            is GameEvent.Celebrate -> {
+                haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+                celebrated = event.verdict
+                celebrations++
+            }
         }
     }
 
     Box(Modifier.fillMaxSize()) {
         // One stable callback, so children taking only onAction can skip recomposition.
         val onAction = remember(viewModel) { viewModel::onAction }
-        GameScreen(state = state, onAction = onAction, animationsEnabled = rememberAnimationsEnabled())
+        GameScreen(
+            state = state,
+            onAction = onAction,
+            animationsEnabled = animationsEnabled,
+            onStageCenter = { stageCenter.value = it },
+        )
+        PetalBurst(
+            trigger = celebrations,
+            verdict = celebrated,
+            origin = { stageCenter.value },
+            animationsEnabled = animationsEnabled,
+            modifier = Modifier.fillMaxSize(),
+        )
         SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding())
     }
 }
 
 @Composable
-fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabled: Boolean = true) {
+fun GameScreen(
+    state: GameState,
+    onAction: (GameAction) -> Unit,
+    animationsEnabled: Boolean = true,
+    /** Where the stage's middle is on screen, for the win's petal burst. */
+    onStageCenter: (Offset) -> Unit = {},
+) {
     val colors = MukhdaTheme.colors
     val hideKeyboard = rememberHideKeyboard()
     // Height of the guess bar (with the keyboard's padding); taps there keep the keyboard up.
@@ -128,7 +165,7 @@ fun GameScreen(state: GameState, onAction: (GameAction) -> Unit, animationsEnabl
                     // box. With the keyboard up it fills this space and scrolls; with the keyboard down
                     // the record stays visible above it. A tap anywhere else closes it.
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction)
+                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter)
                         if (state.isDropdownOpen) {
                             Box(
                                 Modifier
@@ -242,6 +279,7 @@ private fun RoundContent(
     isPlaying: Boolean,
     animationsEnabled: Boolean,
     onAction: (GameAction) -> Unit,
+    onStageCenter: (Offset) -> Unit,
 ) {
     val onPlayClick = { onAction(GameAction.OnPlayClick) }
     val reveal = round.reveal
@@ -270,7 +308,8 @@ private fun RoundContent(
                     modifier = Modifier
                         .padding(top = 16.dp)
                         .fillMaxWidth()
-                        .then(if (fits) Modifier.weight(1f) else Modifier.height(MinStageHeight)),
+                        .then(if (fits) Modifier.weight(1f) else Modifier.height(MinStageHeight))
+                        .onGloballyPositioned { onStageCenter(it.boundsInRoot().center) },
                 )
             }
             if (reveal != null) RevealDetails(round, reveal, isPlaying, onAction) else RoundDetails(round)

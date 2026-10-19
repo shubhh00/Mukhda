@@ -13,6 +13,12 @@ export const paths = {
   candidates: path.join(DATA_DIR, "candidates"),
   verified: path.join(DATA_DIR, "verified"),
   itunesCache: path.join(DATA_DIR, "cache", "itunes"),
+  lastfmCache: path.join(DATA_DIR, "cache", "lastfm"),
+  youtubeCache: path.join(DATA_DIR, "cache", "youtube"),
+  /** Each source's raw popularity per song: data/signals/<source>.json. */
+  signals: path.join(DATA_DIR, "signals"),
+  /** Each pool song's seeded tier, and the sheet of tiers to review. */
+  tiers: path.join(DATA_DIR, "tiers"),
   reports: path.join(DATA_DIR, "reports"),
   /** The built search index (also copied into the app's assets). */
   index: path.join(DATA_DIR, "index"),
@@ -67,3 +73,31 @@ export function downloadFileName(year: number, kind: PromptKind): string {
 export function candidateFileName(year: number, kind: PromptKind): string {
   return `${year}-${kind}.json`;
 }
+
+/**
+ * Label channels whose uploads count as a song's official plays on YouTube: Hindi film music is
+ * almost all released through these. Uploads playlists are the channel id with UC swapped for UU.
+ * YouTube lists only a channel's newest 20,000 uploads, so for the biggest (`playlists: true`)
+ * their playlists are read too, which reach the older ones.
+ */
+export const LABEL_CHANNELS = [
+  { name: "T-Series", uploads: "UUq-Fj5jknLsUf-MWSy4_brA", playlists: true },
+  { name: "Zee Music Company", uploads: "UUFFbwnve3yF62-tVXkTyHqg" },
+  { name: "Sony Music India", uploads: "UU56gTxNs4f9xZ7Pa2i5xNzg" },
+  { name: "SonyMusicIndiaVEVO", uploads: "UU3MLnJtqc_phABBriLRhtgQ" },
+  { name: "Tips Official", uploads: "UUJrDMFOdv1I2k8n9oK_V21w" },
+  { name: "Tips Films", uploads: "UUqXO3ktBw0D0sw1z5hZFeDg" },
+  { name: "YRF", uploads: "UUbTLwN10NoCU4WDzLf1JMOA" },
+  { name: "Saregama Music", uploads: "UU_A7K2dXFsTMAciGmnNxy-Q" },
+  { name: "Eros Universe", uploads: "UUX52tYZiEh_mHoFja3Veciw", playlists: true },
+  { name: "Speed Records", uploads: "UUOsyDsO5tIt-VZ1iwjdQmew" },
+  { name: "Universal Music India", uploads: "UUOQZiBbxmbPo3euu6ECwFUA" },
+  { name: "Times Music", uploads: "UUo07fumrTn1w4AxcU4j_uDw" },
+  { name: "Venus Movies", uploads: "UUpcsv3Ow-8IhoUGDEfPetsQ" },
+  { name: "Shemaroo", uploads: "UUF1JIbMUs6uqoZEY1Haw0GQ" },
+  { name: "Ultra Bollywood", uploads: "UUmL1WlDI8UkXDXCXcBQN9CA" },
+  { name: "Rajshri", uploads: "UUEKWXRsfUHkan-D_ljU8Asw" },
+  { name: "Pen Movies", uploads: "UU3ar28GS6o1p0m_wabfk2zw" },
+  { name: "Junglee Music", uploads: "UUa5G5-Pc3rsYqq2A5ivxhUg" },
+  { name: "White Hill Music", uploads: "UUxQRUQmsAHA5GMAI4nddx_w" },
+] as const;

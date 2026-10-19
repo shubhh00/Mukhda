@@ -11,3 +11,10 @@ build/
 
 # Firebase config is per-environment; keep it out of the repo.
 /app/google-services.json
+
+# Firebase CLI and emulator output.
+.firebase/
+firebase-debug*.log
+firestore-debug.log
+/.emulator-data/
+ui-debug.log

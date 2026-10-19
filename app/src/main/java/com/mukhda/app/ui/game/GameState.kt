@@ -32,8 +32,8 @@ data class GameState(
 ) {
     val round: RoundUi? get() = rounds[selectedTier]
     val isDropdownOpen: Boolean get() = suggestions.isNotEmpty() && selectedSong == null && !suggestionsDismissed
-    val canGuess: Boolean get() = round?.isOpen == true && selectedSong != null && !isSubmitting
-    val canSkip: Boolean get() = round?.isOpen == true && !isSubmitting
+    val canGuess: Boolean get() = round?.isOpen == true && round?.isSending != true && selectedSong != null && !isSubmitting
+    val canSkip: Boolean get() = round?.isOpen == true && round?.isSending != true && !isSubmitting
 
     /** The tier to suggest after this one: the next not yet started, else the next still open. */
     val nextTier: Tier?
@@ -56,6 +56,8 @@ data class RoundUi(
     val solvedAtStep: Int? = null,
     /** The song, once the server reveals it. */
     val reveal: RevealUi? = null,
+    /** A try is waiting for the connection; no other try until it's through. */
+    val isSending: Boolean = false,
 ) {
     val isStarted: Boolean get() = slots.any { it is TrySlotUi.Used }
 }
@@ -81,6 +83,9 @@ sealed interface TrySlotUi {
     ) : TrySlotUi
 
     data class Empty(override val number: Int) : TrySlotUi
+
+    /** A try made but not yet through to the server: a skip ([title] null) or a guess. */
+    data class Sending(override val number: Int, val title: String?, val detail: String?) : TrySlotUi
 }
 
 enum class Stamp { WRONG, RIGHT_FILM, SKIPPED, CORRECT }
@@ -112,4 +117,7 @@ sealed interface GameAction {
 
 sealed interface GameEvent {
     data class ShowMessage(val message: UiText) : GameEvent
+
+    /** The player just guessed the song: once, at the moment of the win, never on a reload. */
+    data class Celebrate(val verdict: Verdict) : GameEvent
 }

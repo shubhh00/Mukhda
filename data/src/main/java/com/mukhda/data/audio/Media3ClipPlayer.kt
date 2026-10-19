@@ -50,7 +50,7 @@ import kotlin.coroutines.resume
 
 /**
  * ExoPlayer over a disk cache of whole previews. A clip is a [MediaItem.ClippingConfiguration]
- * window, so it ends where the clip ends rather than when a timer fires; that keeps 100 ms clips
+ * window, so it ends where the clip ends rather than when a timer fires; that keeps short clips
  * exact on slow phones too. The player lives on the main thread, as ExoPlayer requires.
  */
 @OptIn(UnstableApi::class)
@@ -110,7 +110,7 @@ class Media3ClipPlayer @Inject constructor(
     }
 
     override suspend fun play(preview: Preview, lengthMs: Long?): EmptyOutcome<DataError> {
-        // Never start a clip that isn't fully on disk: a stalled 100 ms clip is a broken round.
+        // Never start a clip that isn't fully on disk: a stalled half-second clip is a broken round.
         val cached = cache(listOf(preview))
         if (cached is Outcome.Error) return cached
 
@@ -149,7 +149,7 @@ class Media3ClipPlayer @Inject constructor(
                         }
                     }.also(player::addListener)
                     // Android powers the speaker path down after 3 s of silence, and waking it eats
-                    // the first ~100 ms of sound: a whole 0.1 s clip. From cold, the warm-up silence
+                    // the first ~100 ms of sound, a fifth of the first clip. From cold, the warm-up silence
                     // plays first; warm, the clip starts at once.
                     val now = SystemClock.elapsedRealtime()
                     val cold = !isSpeakerAwake(now)

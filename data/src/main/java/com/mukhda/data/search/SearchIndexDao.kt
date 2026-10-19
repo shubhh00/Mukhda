@@ -28,13 +28,6 @@ interface SearchIndexDao {
     @Query("SELECT * FROM search_songs WHERE songId IN (:ids)")
     suspend fun byIds(ids: List<String>): List<SearchSongEntity>
 
-    @Query("SELECT COUNT(*) FROM search_songs")
-    suspend fun count(): Int
-
-    /** The song at [offset] in a fixed order, so a seeded random offset picks the same song each time. */
-    @Query("SELECT songId FROM search_songs ORDER BY songId LIMIT 1 OFFSET :offset")
-    suspend fun songIdAt(offset: Int): String?
-
     @Query("DELETE FROM search_songs")
     suspend fun clear()
 

@@ -26,13 +26,17 @@ enum class RoundStatus {
     val isFinished: Boolean get() = this != OPEN
 }
 
-/** Clip lengths per step. The last step plays the whole preview. */
+/**
+ * Clip lengths per step. The last step plays the whole preview. A film song needs a vocal phrase
+ * or the hook's first notes to be known, so the shortest clip is half a second, and each step
+ * doubles it.
+ */
 object ClipLadder {
     const val STEP_COUNT = 5
     const val LAST_STEP = STEP_COUNT - 1
     const val MAX_TRIES = 5
 
-    private val lengthsMs = longArrayOf(100, 500, 1_000, 2_000)
+    private val lengthsMs = longArrayOf(500, 1_000, 2_000, 4_000)
 
     /** Clip length for [step], or null for the full preview. */
     fun clipLengthMs(step: Int): Long? {
@@ -40,7 +44,7 @@ object ClipLadder {
         return if (step == LAST_STEP) null else lengthsMs[step]
     }
 
-    /** "0.1 sec", "1 sec", "Full" — used in the ladder label and the share text. */
+    /** "0.5 sec", "1 sec", "Full" — used in the ladder label and the share text. */
     fun label(step: Int): String = when (val ms = clipLengthMs(step)) {
         null -> "Full"
         else -> if (ms % 1000 == 0L) "${ms / 1000} sec" else "${ms / 1000.0} sec"

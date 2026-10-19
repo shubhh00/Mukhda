@@ -15,6 +15,9 @@ interface RoundDao {
     @Query("SELECT * FROM rounds WHERE date = :date")
     fun observeRounds(date: String): Flow<List<RoundEntity>>
 
+    @Query("SELECT * FROM rounds WHERE date = :date AND tier = :tier")
+    suspend fun round(date: String, tier: String): RoundEntity?
+
     @Query("SELECT date, triesUsed FROM rounds")
     fun observeDayRounds(): Flow<List<DayRoundTuple>>
 }
@@ -31,6 +34,10 @@ interface TryDao {
     /** Tries the server hasn't confirmed yet; resent first on the next launch. */
     @Query("SELECT * FROM tries WHERE state = 'PENDING' ORDER BY createdAt")
     suspend fun pending(): List<TryEntity>
+
+    /** One round's tries the server hasn't confirmed yet, oldest first. */
+    @Query("SELECT * FROM tries WHERE state = 'PENDING' AND date = :date AND tier = :tier ORDER BY createdAt")
+    suspend fun pendingFor(date: String, tier: String): List<TryEntity>
 
     @Query("UPDATE tries SET state = :state, result = :result WHERE requestId = :requestId")
     suspend fun updateState(requestId: String, state: String, result: String?)

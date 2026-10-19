@@ -205,21 +205,17 @@ fun Ticket(ticket: TicketUi, modifier: Modifier = Modifier) {
                     )
                 }
                 DiamondRule(modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    BasicText(
-                        text = verdictHeadline(ticket.verdict),
-                        style = type.verdict.copy(color = colors.red),
-                        maxLines = 1,
-                        autoSize = TextAutoSize.StepBased(minFontSize = 30.sp, maxFontSize = 62.sp),
-                        modifier = Modifier.weight(1f, fill = false).alignByBaseline(),
-                    )
-                    Text(
-                        text = stringResource(ticket.verdict.hindiRes),
-                        style = type.devanagariDisplay.copy(fontSize = 32.sp),
-                        color = colors.ink,
-                        modifier = Modifier.alignByBaseline(),
-                    )
-                }
+                Text(
+                    text = stringResource(R.string.todays_performance).uppercase(),
+                    style = type.caption.copy(letterSpacing = type.label.letterSpacing),
+                    color = colors.muted,
+                )
+                BasicText(
+                    text = verdictHeadline(ticket.verdict),
+                    style = type.verdict.copy(color = colors.red),
+                    maxLines = 1,
+                    autoSize = TextAutoSize.StepBased(minFontSize = 30.sp, maxFontSize = 62.sp),
+                )
                 Text(
                     text = ticket.solvedAtStep
                         ?.let { stringResource(R.string.ticket_on, stringResource(solvedClipRes(it))).uppercase() }
@@ -337,7 +333,7 @@ private fun Barcode(seed: Int) {
 private fun shareText(ticket: TicketUi, round: RoundUi): String {
     val squares = ticket.slots.joinToString("") { slot ->
         when (slot) {
-            is TrySlotUi.Empty -> "⬜"
+            is TrySlotUi.Empty, is TrySlotUi.Sending -> "⬜"
             is TrySlotUi.Used -> when (slot.stamp) {
                 Stamp.WRONG -> "🟥"
                 Stamp.RIGHT_FILM -> "🟨"

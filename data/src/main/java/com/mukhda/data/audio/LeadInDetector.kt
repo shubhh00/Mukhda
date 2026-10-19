@@ -34,8 +34,8 @@ internal object LeadInDetector {
         val reference = levels.sorted()[(levels.size * 0.9).toInt().coerceAtMost(levels.size - 1)]
         if (reference < QUIET_PREVIEW_RMS) return 0
         val onset = levels.indexOfFirst { it >= reference * ONSET_FRACTION }
-        // Starting a little late only trims the first note's attack; starting early can leave a
-        // 0.1 s clip mostly silent.
+        // Starting a little late only trims the first note's attack; starting early can leave
+        // the first clip mostly silent.
         return if (onset <= 0) 0 else onset.toLong() * WINDOW_MS + ONSET_MARGIN_MS
     }
 

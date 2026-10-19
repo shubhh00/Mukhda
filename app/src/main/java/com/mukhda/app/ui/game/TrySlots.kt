@@ -8,7 +8,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -40,6 +42,7 @@ fun TrySlots(slots: List<TrySlotUi>, modifier: Modifier = Modifier) {
             when (slot) {
                 is TrySlotUi.Used -> UsedSlot(slot)
                 is TrySlotUi.Empty -> EmptySlot(slot.number)
+                is TrySlotUi.Sending -> SendingSlot(slot)
             }
         }
     }
@@ -77,6 +80,37 @@ private fun UsedSlot(slot: TrySlotUi.Used) {
             }
         }
         StampLabel(slot.stamp)
+    }
+}
+
+/** A try waiting for the connection: what was tried, and a spinner where the stamp will go. */
+@Composable
+private fun SendingSlot(slot: TrySlotUi.Sending) {
+    val colors = MukhdaTheme.colors
+    val type = MukhdaTheme.typography
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = SlotHeight)
+            .background(colors.card)
+            .dashedBorder(colors.rule)
+            .stubLine(colors.rule, dashed = true)
+            .padding(end = 12.dp, top = 3.dp, bottom = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Numeral(slot.number, used = true)
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = slot.title ?: stringResource(R.string.slot_skipped),
+                style = type.bodyStrong.copy(fontSize = type.bodySmall.fontSize * 1.17f),
+                color = colors.muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(stringResource(R.string.slot_sending), style = type.bodySmall, color = colors.muted, maxLines = 1)
+        }
+        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = colors.muted, strokeWidth = 2.dp)
     }
 }
 

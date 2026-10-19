@@ -1,8 +1,8 @@
 # Song curation
 
 Builds Mukhda's answer pool and search index: chat-model candidates → iTunes verification →
-review → search index → (later) tiering and publishing. Runs on Node 24 with no build step
-(`.ts` files run directly). No API keys: candidates come from a chat app, pasted by hand.
+review → search index → tiering → (later) publishing. Runs on Node 24 with no build step
+(`.ts` files run directly). Candidates come from a chat app, pasted by hand; only tiering needs API keys.
 
 ```bash
 cd tools/curation
@@ -41,6 +41,25 @@ Each candidate ends up as:
   film's soundtrack from iTunes, without remixes or instrumentals. Song ids are Apple track ids
   (`s_<trackId>`). It writes `data/index/search_index.json` and the next
   `assets/search_index/v<N>.json` in the app.
+
+## Tiering
+
+Needs `YOUTUBE_API_KEY` and `LASTFM_API_KEY` in `.env` (copy `.env.example`; `.env` is gitignored). Each source has its own command, which writes
+`data/signals/<source>.json`; all of them cache every response, so re-runs are free.
+
+| Command | Source | Weight |
+|---|---|---|
+| `npm run youtube` | Views summed over the label channels' uploads of the song (full video, lyric video, audio). Lists every upload of the channels in `LABEL_CHANNELS` (about 4,000 of the 10,000 daily units); a run stopped by the quota carries on the next day. | 75% |
+| `npm run lastfm` | Last.fm listeners, summed over the spellings of the song's singers and composer. Its audience is small and mostly abroad, so it mainly fills gaps. | 25% |
+
+`npm run tier` then ranks each source within the song's release year, blends the ranks by
+weight (a source without the song gives its weight to the others) and splits each year into equal
+fifths, best known to Easy. The chat's recognisability only flags songs where it disagrees with
+the data, and stands in for songs no source has. It writes `data/tiers/tiers.json` and
+`data/tiers/review.csv`, flagged songs first: import the CSV into the curation sheet and fill
+`new_tier` only where the tier looks wrong.
+
+After launch, players' solve rates replace these seeds.
 
 ## Refreshing
 

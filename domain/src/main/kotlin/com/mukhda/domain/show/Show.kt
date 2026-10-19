@@ -29,6 +29,18 @@ sealed interface TryError : AppError {
     data class Rule(val error: GameError) : TryError
 }
 
+/**
+ * The try never reached the server (no signal, a timeout), so it's kept and sent again, with the
+ * same requestId, rather than dropped. A server error isn't one of these: if it happened again
+ * every time, the try would block its round.
+ */
+val TryError.isTransient: Boolean
+    get() = this is TryError.Data && error in setOf(
+        DataError.Network.NO_INTERNET,
+        DataError.Network.REQUEST_TIMEOUT,
+        DataError.Network.SERVICE_UNAVAILABLE,
+    )
+
 interface ShowRepository {
     suspend fun todaysShow(): Outcome<Show, DataError>
 

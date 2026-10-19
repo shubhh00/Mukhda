@@ -29,6 +29,9 @@ data class SongReveal(
     val artworkUrl: String?,
     /** The track on Apple Music, for "Listen on Apple Music". */
     val appleMusicUrl: String?,
+    val composer: String? = null,
+    /** "Top X% today": the share of the day's finished players who did at least as well. */
+    val topPercent: Int? = null,
 )
 
 /**

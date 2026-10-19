@@ -58,17 +58,6 @@ internal val Verdict.nameRes: Int
         Verdict.DISASTER -> R.string.verdict_disaster
     }
 
-@get:StringRes
-internal val Verdict.hindiRes: Int
-    get() = when (this) {
-        Verdict.BLOCKBUSTER -> R.string.verdict_blockbuster_hi
-        Verdict.SUPERHIT -> R.string.verdict_superhit_hi
-        Verdict.HIT -> R.string.verdict_hit_hi
-        Verdict.AVERAGE -> R.string.verdict_average_hi
-        Verdict.FLOP -> R.string.verdict_flop_hi
-        Verdict.DISASTER -> R.string.verdict_disaster_hi
-    }
-
 /** The three good verdicts get an exclamation mark, like a poster's tagline. */
 internal val Verdict.isCelebrated: Boolean get() = this <= Verdict.HIT
 
@@ -96,7 +85,8 @@ internal fun TrySquares(slots: List<TrySlotUi>, size: Dp, gap: Dp, modifier: Mod
     Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(gap)) {
         slots.forEach { slot ->
             when (slot) {
-                is TrySlotUi.Empty -> Box(Modifier.size(size).border(1.5.dp, colors.dashed))
+                // Only a finished round has squares, and nothing is waiting to send in one.
+                is TrySlotUi.Empty, is TrySlotUi.Sending -> Box(Modifier.size(size).border(1.5.dp, colors.dashed))
                 is TrySlotUi.Used -> {
                     val (fill, mark) = when (slot.stamp) {
                         Stamp.WRONG -> colors.ticketWrong to Mark.CROSS
@@ -207,12 +197,18 @@ internal fun RevealDetails(round: RoundUi, reveal: RevealUi, isPlaying: Boolean,
     }
 }
 
-/** The verdict as a rubber stamp, its Devanagari under it. */
+/** "Today's performance" over the verdict, stamped like a box-office report. */
 @Composable
 private fun VerdictStamp(verdict: Verdict) {
     val colors = MukhdaTheme.colors
     val color = if (verdict.isCelebrated) colors.teal else colors.red
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = stringResource(R.string.todays_performance).uppercase(),
+            style = MukhdaTheme.typography.caption,
+            color = colors.muted,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
         Text(
             text = verdictHeadline(verdict),
             style = MukhdaTheme.typography.label.copy(fontWeight = FontWeight.SemiBold, fontSize = 15.sp),
@@ -221,12 +217,6 @@ private fun VerdictStamp(verdict: Verdict) {
                 .rotate(-4f)
                 .border(2.dp, color)
                 .padding(horizontal = 8.dp, vertical = 3.dp),
-        )
-        Text(
-            text = stringResource(verdict.hindiRes),
-            style = MukhdaTheme.typography.devanagariDisplay.copy(fontSize = 15.sp),
-            color = colors.ink,
-            modifier = Modifier.padding(top = 4.dp),
         )
     }
 }

@@ -1,0 +1,26 @@
+{
+  "name": "mukhda-functions",
+  "private": true,
+  "type": "module",
+  "description": "Mukhda's callable functions: today's show, tries, and closing the day at midnight IST.",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit -p tsconfig.test.json",
+    "test": "firebase emulators:exec --only firestore --project demo-mukhda \"node --disable-warning=ExperimentalWarning --test test/*.test.ts\"",
+    "serve": "npm run build && node scripts/serve.mjs",
+    "deploy": "firebase deploy --only functions,firestore"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.0",
+    "firebase-functions": "^7.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "firebase-tools": "^15.34.0",
+    "typescript": "^7.0.2"
+  }
+}

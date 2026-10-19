@@ -17,6 +17,18 @@ android {
     defaultConfig {
         minSdk = 26
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("boolean", "USE_FIREBASE_EMULATOR", "false")
+    }
+    buildTypes {
+        // Debug builds talk to the Firebase emulators on the laptop, over `adb reverse` (see
+        // functions/README.md). `-Pmukhda.emulator=false` points a debug build at the real project.
+        debug {
+            val useEmulator = providers.gradleProperty("mukhda.emulator").orElse("true").get().toBoolean()
+            buildConfigField("boolean", "USE_FIREBASE_EMULATOR", useEmulator.toString())
+        }
+    }
+    buildFeatures {
+        buildConfig = true
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -39,6 +51,13 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.kotlinx.serialization.json)
+
+    // Callable functions and the anonymous sign-in they need. No Firestore SDK: the app never
+    // reads the database directly.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.auth)
+    implementation(libs.firebase.functions)
+    implementation(libs.kotlinx.coroutines.play.services)
 
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.datasource)

@@ -10,6 +10,8 @@ import com.mukhda.domain.GameError
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
 import com.mukhda.domain.model.ClipLadder
+import com.mukhda.domain.model.RoundStatus
+import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.onFailure
 import com.mukhda.domain.onSuccess
@@ -19,6 +21,7 @@ import com.mukhda.domain.search.SongSearcher
 import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
 import com.mukhda.domain.show.TryError
+import com.mukhda.domain.show.isTransient
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -50,6 +53,10 @@ class GameViewModel @Inject constructor(
     private val songs = mutableMapOf<String, SearchSong>()
     private var searchJob: Job? = null
     private var playJob: Job? = null
+
+    /** A try per tier that hasn't reached the server yet; the repository keeps it and resends it. */
+    private val sending = mutableMapOf<Tier, String?>()
+    private var resendJob: Job? = null
 
     init {
         // Load the search index now so the first keystroke in the guess box is instant.
@@ -84,9 +91,7 @@ class GameViewModel @Inject constructor(
             _state.update { it.copy(isLoading = true, loadError = null) }
             showRepository.todaysShow()
                 .onSuccess { loaded ->
-                    show = loaded
-                    rememberGuessedSongs(loaded)
-                    publishShow()
+                    showLoaded(loaded)
                     // Get the selected tier's clip ready first, so an early tap plays at once, then
                     // download the rest. A failure here is retried, and reported, by the next play.
                     launch {
@@ -96,6 +101,26 @@ class GameViewModel @Inject constructor(
                     }
                 }
                 .onFailure { error -> _state.update { it.copy(isLoading = false, loadError = error.toUiText()) } }
+        }
+    }
+
+    /**
+     * A fresh show from the server. Loading it resends any try still waiting, so by now those are
+     * on the server: confirmed (and in the show) or refused. A round that a waiting guess just
+     * won gets its celebration now.
+     */
+    private suspend fun showLoaded(loaded: Show) {
+        val before = show?.rounds
+        show = loaded
+        val wasSending = sending.keys.toSet()
+        sending.clear()
+        rememberGuessedSongs(loaded)
+        publishShow()
+        for (tier in wasSending) {
+            val round = loaded.rounds[tier] ?: continue
+            if (round.status == RoundStatus.WON && before?.get(tier)?.status != RoundStatus.WON) {
+                round.verdict?.let { _events.send(GameEvent.Celebrate(it)) }
+            }
         }
     }
 
@@ -113,7 +138,10 @@ class GameViewModel @Inject constructor(
                 showNo = show.showNo,
                 dateLabel = show.date.toDateLabel(),
                 endsAtEpochMs = show.endsAt.toEpochMilli(),
-                rounds = show.rounds.mapValues { (_, round) -> round.toRoundUi(songs) },
+                rounds = show.rounds.mapValues { (tier, round) ->
+                    val ui = round.toRoundUi(songs)
+                    if (tier in sending) ui.withSending(sending[tier]?.let(songs::get)) else ui
+                },
             )
         }
         refreshSuggestions()
@@ -193,10 +221,34 @@ class GameViewModel @Inject constructor(
                     this@GameViewModel.show = show.copy(rounds = show.rounds + (tier to result.data))
                     clearGuess()
                     publishShow()
+                    if (result.data.status == RoundStatus.WON) result.data.verdict?.let { _events.send(GameEvent.Celebrate(it)) }
                     // A miss moves the ladder up a step: the next clip is longer.
                     preloadCurrentClip()
                 }
-                is Outcome.Error -> handleTryError(result.error)
+                is Outcome.Error -> if (result.error.isTransient) {
+                    // It never reached the server: the repository keeps it and sends it again,
+                    // with the same requestId, so it shows as sending and is retried until through.
+                    sending[tier] = songId
+                    clearGuess()
+                    publishShow()
+                    resendWhenBack()
+                    _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.try_queued)))
+                } else {
+                    handleTryError(result.error)
+                }
+            }
+        }
+    }
+
+    /** Retries the waiting tries, waiting longer each time, until the show loads again. */
+    private fun resendWhenBack() {
+        if (resendJob?.isActive == true) return
+        resendJob = viewModelScope.launch {
+            var wait = RESEND_FIRST_MS
+            while (sending.isNotEmpty()) {
+                delay(wait)
+                showRepository.todaysShow().onSuccess { showLoaded(it) }
+                wait = (wait * 2).coerceAtMost(RESEND_MAX_MS)
             }
         }
     }
@@ -266,5 +318,7 @@ class GameViewModel @Inject constructor(
     private companion object {
         const val KEY_GUESS_TEXT = "guessText"
         const val SEARCH_DEBOUNCE_MS = 150L
+        const val RESEND_FIRST_MS = 3_000L
+        const val RESEND_MAX_MS = 30_000L
     }
 }

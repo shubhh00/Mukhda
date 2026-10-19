@@ -35,7 +35,7 @@ class VerdictTest {
 
     @Test
     fun `clip ladder lengths and labels`() {
-        assertThat((0..4).map { ClipLadder.clipLengthMs(it) }).containsExactly(100L, 500L, 1_000L, 2_000L, null)
-        assertThat((0..4).map { ClipLadder.label(it) }).containsExactly("0.1 sec", "0.5 sec", "1 sec", "2 sec", "Full")
+        assertThat((0..4).map { ClipLadder.clipLengthMs(it) }).containsExactly(500L, 1_000L, 2_000L, 4_000L, null)
+        assertThat((0..4).map { ClipLadder.label(it) }).containsExactly("0.5 sec", "1 sec", "2 sec", "4 sec", "Full")
     }
 }

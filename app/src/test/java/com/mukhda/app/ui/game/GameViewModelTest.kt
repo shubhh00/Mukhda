@@ -256,7 +256,9 @@ class GameViewModelTest {
         val vm = viewModel()
         vm.onAction(GameAction.OnPlayClick)
         assertThat(vm.state.value.isPlaying).isTrue()
-        advanceTimeBy(150)
+        advanceTimeBy(450)
+        assertThat(vm.state.value.isPlaying).isTrue()
+        advanceTimeBy(100)
         assertThat(vm.state.value.isPlaying).isFalse()
     }
 
@@ -272,17 +274,17 @@ class GameViewModelTest {
         vm.onAction(GameAction.OnTierClick(Tier.HARD))
         vm.onAction(GameAction.OnSkipClick)
         vm.onAction(GameAction.OnPlayClick)
-        assertThat(player.played.single()).isEqualTo(show.previews.getValue(Tier.HARD) to 500L)
+        assertThat(player.played.single()).isEqualTo(show.previews.getValue(Tier.HARD) to 1_000L)
     }
 
     @Test
     fun `the next clip is preloaded after loading, a try and a tier change`() = runTest(dispatcher) {
         val vm = viewModel()
-        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 100L)
-        vm.onAction(GameAction.OnSkipClick)
         assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 500L)
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 1_000L)
         vm.onAction(GameAction.OnTierClick(Tier.LEGEND))
-        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.LEGEND) to 100L)
+        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.LEGEND) to 500L)
     }
 
     @Test
@@ -325,6 +327,60 @@ class GameViewModelTest {
         val round = vm.state.value.round!!
         assertThat(round.verdict).isEqualTo(Verdict.SUPERHIT)
         assertThat(round.solvedAtStep).isEqualTo(1)
+    }
+
+    @Test
+    fun `a try with no connection shows as sending and blocks the next one`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.NO_INTERNET)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        val round = vm.state.value.round!!
+        assertThat(round.slots.first()).isInstanceOf<TrySlotUi.Sending>()
+        assertThat(round.isSending).isTrue()
+        assertThat(vm.state.value.canSkip).isFalse()
+    }
+
+    @Test
+    fun `a waiting try clears once the show loads again`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.REQUEST_TIMEOUT)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        val loadsBefore = show.loads
+        advanceTimeBy(3_100)
+        assertThat(show.loads).isEqualTo(loadsBefore + 1)
+        val round = vm.state.value.round!!
+        assertThat(round.isSending).isFalse()
+        assertThat(vm.state.value.canSkip).isTrue()
+    }
+
+    @Test
+    fun `a refused try isn't kept as sending`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.SERVER_ERROR)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
+    fun `a correct guess celebrates, once`() = runTest(dispatcher) {
+        show.judge = { TryResult.CORRECT }
+        val vm = viewModel()
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnSuggestionClick("s7"))
+        vm.events.test {
+            vm.onAction(GameAction.OnGuessClick)
+            assertThat(awaitItem()).isEqualTo(GameEvent.Celebrate(Verdict.BLOCKBUSTER))
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `a lost round doesn't celebrate`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.events.test {
+            repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+            expectNoEvents()
+        }
     }
 
     @Test

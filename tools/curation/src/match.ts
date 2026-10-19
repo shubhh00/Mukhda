@@ -16,7 +16,7 @@ export interface MatchResult {
 
 /** Markers that a track isn't the original film version. Checked only in the suffix, never the title itself. */
 const VERSION_MARKERS =
-  /\b(remix|reprise|unplugged|lo ?fi|mashup|club|acoustic|instrumental|karaoke|recreated|revisited|version|slowed|reverb|cover|live|redux)\b/i;
+  /\b(remix|reprise|unplugged|lo ?fi|mashup|club|acoustic|instrumental|karaoke|recreated|revisited|version|slowed|reverb|cover|live|redux|jhankar|8d)\b/i;
 
 const FROM_FILM = /from\s+["“'‘]([^"”'’]+)["”'’]/i;
 

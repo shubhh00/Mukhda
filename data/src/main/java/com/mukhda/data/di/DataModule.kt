@@ -10,7 +10,7 @@ import com.mukhda.data.search.BundledSearchIndexAsset
 import com.mukhda.data.search.RoomSongIndexDataSource
 import com.mukhda.data.search.SearchIndexAsset
 import com.mukhda.data.search.SearchIndexDao
-import com.mukhda.data.show.StandInShowRepository
+import com.mukhda.data.show.FirebaseShowRepository
 import com.mukhda.domain.audio.ClipPlayer
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.show.ShowRepository
@@ -65,7 +65,6 @@ abstract class DataBindings {
     @Binds
     abstract fun searchIndexAsset(asset: BundledSearchIndexAsset): SearchIndexAsset
 
-    // Swapped for the Firebase-backed repository once the Cloud Functions exist.
     @Binds
-    abstract fun showRepository(repository: StandInShowRepository): ShowRepository
+    abstract fun showRepository(repository: FirebaseShowRepository): ShowRepository
 }

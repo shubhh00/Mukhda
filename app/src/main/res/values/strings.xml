@@ -13,15 +13,18 @@
     <string name="show_line">SHOW NO. %1$d · %2$s</string>
     <string name="streak_badge">%1$d HOUSEFULL</string>
     <string name="clip_of">Clip %1$d of %2$d</string>
-    <string name="clip_0">0.1 sec</string>
-    <string name="clip_1">0.5 sec</string>
-    <string name="clip_2">1 sec</string>
-    <string name="clip_3">2 sec</string>
+    <string name="clip_0">0.5 sec</string>
+    <string name="clip_1">1 sec</string>
+    <string name="clip_2">2 sec</string>
+    <string name="clip_3">4 sec</string>
     <string name="clip_full">Full</string>
-    <!-- Under the two narrowest ladder bars, where "0.1 sec" doesn't fit. -->
-    <string name="ladder_0">0.1</string>
-    <string name="ladder_1">0.5</string>
+    <!-- Under the two narrowest ladder bars, where "0.5 sec" doesn't fit. -->
+    <string name="ladder_0">0.5</string>
+    <string name="ladder_1">1 sec</string>
     <string name="now_showing">Now showing</string>
+    <!-- A try that couldn't reach the server yet. -->
+    <string name="slot_sending">Sending…</string>
+    <string name="try_queued">No connection. Your try will go through when you\'re back online.</string>
     <!-- The valance's lettering through a round, like a film's running order: one per try used. -->
     <string name="marquee_reel_two">Reel two</string>
     <string name="marquee_interval">Interval</string>
@@ -57,23 +60,19 @@
     <string name="retry">Retry</string>
 
     <!-- Result -->
+    <!-- Over the verdict on the result card and the ticket: "Today's performance: BLOCKBUSTER!" -->
+    <string name="todays_performance">Today\'s performance</string>
     <string name="verdict_blockbuster">Blockbuster</string>
     <string name="verdict_superhit">Superhit</string>
     <string name="verdict_hit">Hit</string>
     <string name="verdict_average">Average</string>
     <string name="verdict_flop">Flop</string>
     <string name="verdict_disaster">Disaster</string>
-    <string name="verdict_blockbuster_hi" translatable="false">ब्लॉकबस्टर</string>
-    <string name="verdict_superhit_hi" translatable="false">सुपरहिट</string>
-    <string name="verdict_hit_hi" translatable="false">हिट</string>
-    <string name="verdict_average_hi" translatable="false">एवरेज</string>
-    <string name="verdict_flop_hi" translatable="false">फ्लॉप</string>
-    <string name="verdict_disaster_hi" translatable="false">डिज़ास्टर</string>
     <string name="solved_on">Got it on the %1$s</string>
-    <string name="solved_clip_0">0.1-second clip</string>
-    <string name="solved_clip_1">half-second clip</string>
-    <string name="solved_clip_2">1-second clip</string>
-    <string name="solved_clip_3">2-second clip</string>
+    <string name="solved_clip_0">half-second clip</string>
+    <string name="solved_clip_1">1-second clip</string>
+    <string name="solved_clip_2">2-second clip</string>
+    <string name="solved_clip_3">4-second clip</string>
     <string name="solved_clip_4">full preview</string>
     <string name="out_of_tries">Out of tries</string>
     <string name="listen_on_apple_music">Listen on Apple Music</string>

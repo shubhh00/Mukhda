@@ -24,6 +24,14 @@ fun TryResult.toStamp(): Stamp = when (this) {
     TryResult.SKIPPED -> Stamp.SKIPPED
 }
 
+/** The round with a try still waiting for the connection, in the first free slot. */
+fun RoundUi.withSending(song: SearchSong?): RoundUi {
+    val at = slots.indexOfFirst { it is TrySlotUi.Empty }
+    if (at == -1) return this
+    val sending = TrySlotUi.Sending(slots[at].number, song?.title, song?.let { "${it.filmTitle} · ${it.year}" })
+    return copy(slots = slots.toMutableList().also { it[at] = sending }, isSending = true)
+}
+
 /** Five slots: one per try made, then numbered empty ones. [songs] fills in what was guessed. */
 fun RoundState.toRoundUi(songs: Map<String, SearchSong>): RoundUi {
     val used = tries.mapIndexed { i, attempt ->

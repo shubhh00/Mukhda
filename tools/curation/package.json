@@ -13,10 +13,15 @@
     "report": "node --disable-warning=ExperimentalWarning src/cli.ts report",
     "review": "node --disable-warning=ExperimentalWarning src/cli.ts review",
     "index": "node --disable-warning=ExperimentalWarning src/cli.ts index",
+    "youtube": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts youtube",
+    "lastfm": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts lastfm",
+    "tier": "node --disable-warning=ExperimentalWarning src/cli.ts tier",
+    "publish": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts publish",
     "typecheck": "tsc",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\""
   },
   "dependencies": {
+    "firebase-admin": "^14.5.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

@@ -72,6 +72,12 @@ test("only a remix available needs a check", () => {
   assert.deepEqual(result.reasons, ["not_original"]);
 });
 
+test("a Jhankar Beats edit isn't the original", () => {
+  const jhankar = track({ trackId: 2, trackName: "Kesariya (Super Jhankar Beats)", collectionName: "Kesariya (Super Jhankar Beats) - Single" });
+  const result = evaluate(candidate(), [jhankar, track()]);
+  assert.equal(result.track?.trackId, 1);
+});
+
 test("a recreation is allowed a version marker", () => {
   const result = evaluate(candidate({ is_recreation: true }), [track({ trackName: "Kesariya (Recreated)" })]);
   assert.equal(result.status, "found");
