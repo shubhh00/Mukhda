@@ -64,27 +64,31 @@ private val PelmetDepth = 28.dp
 /**
  * The curtain the app opens on: मुखड़ा and what the game is, on closed velvet. Once the first
  * show is in ([ready]) and the line has had time to be read, the words fade and the curtain parts
- * on the game; then [onOpened] takes it away. Moves only through [graphicsLayer]. With animations
+ * on the game ([onParting]); then [onOpened] takes it away. Moves only through [graphicsLayer]. With animations
  * off it goes as soon as the show is ready.
  */
 @Composable
-fun LaunchCurtain(ready: Boolean, onOpened: () -> Unit, modifier: Modifier = Modifier) {
+fun LaunchCurtain(ready: Boolean, onParting: () -> Unit, onOpened: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MukhdaTheme.colors
     val animationsEnabled = rememberAnimationsEnabled()
     // Up from the first frame: the start-up wait is already behind the player.
     val words = remember { Animatable(1f) }
     val part = remember { Animatable(0f) }
     val isReady by rememberUpdatedState(ready)
+    val parting by rememberUpdatedState(onParting)
     val opened by rememberUpdatedState(onOpened)
     LaunchedEffect(Unit) {
         val shownAt = TimeSource.Monotonic.markNow()
         withTimeoutOrNull(MAX_HOLD_MS) { snapshotFlow { isReady }.first { it } }
         if (animationsEnabled) {
             delay(MIN_HOLD_MS.milliseconds - shownAt.elapsedNow())
+            parting()
             coroutineScope {
                 launch { words.animateTo(0f, tween(WORDS_OUT_MS)) }
                 part.animateTo(1f, tween(PART_MS, delayMillis = WORDS_OUT_MS / 2, easing = FastOutSlowInEasing))
             }
+        } else {
+            parting()
         }
         opened()
     }

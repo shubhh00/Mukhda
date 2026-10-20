@@ -11,10 +11,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.rememberNavController
 import com.mukhda.app.ui.game.GameRoute
@@ -27,15 +29,20 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        // The system's launch screen is plain velvet; on the first frame it gives way to the
-        // launch curtain, which then holds while the first show loads.
+        // The system's launch screen is plain velvet; the launch curtain is drawn over it on the
+        // first frame, and holds while the first show loads.
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        styleSystemBars(onCurtain = savedInstanceState == null)
+        // Whenever Android shows its launch screen: a fresh start, or a return to an app it closed
+        // in the background (a new process). Never when the screen is only rebuilt, say on rotation.
+        val freshStart = savedInstanceState == null || !curtainShown
+        curtainShown = true
+        styleSystemBars(onCurtain = freshStart)
+        showNavigationBar(!freshStart)
         setContent {
             MukhdaTheme {
-                // Only on a fresh start: not when the screen is rebuilt (say, on rotation).
-                var curtainUp by rememberSaveable { mutableStateOf(savedInstanceState == null) }
+                // Not saveable: a restored app would bring back "already opened" from its last run.
+                var curtainUp by remember { mutableStateOf(freshStart) }
                 var showReady by remember { mutableStateOf(false) }
                 LaunchedEffect(curtainUp) { styleSystemBars(onCurtain = curtainUp) }
                 Box {
@@ -43,10 +50,24 @@ class MainActivity : ComponentActivity() {
                     NavHost(navController = navController, startDestination = GameRoute) {
                         gameGraph(onShowReady = { showReady = true })
                     }
-                    if (curtainUp) LaunchCurtain(ready = showReady, onOpened = { curtainUp = false })
+                    if (curtainUp) {
+                        LaunchCurtain(
+                            ready = showReady,
+                            // Back as the curtain starts to part, so the game settles under it.
+                            onParting = { showNavigationBar(true) },
+                            onOpened = { curtainUp = false },
+                        )
+                    }
                 }
             }
         }
+    }
+
+    /** The navigation bar is hidden while the launch curtain is down; a swipe still brings it up. */
+    private fun showNavigationBar(show: Boolean) {
+        val bars = WindowCompat.getInsetsController(window, window.decorView)
+        bars.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (show) bars.show(WindowInsetsCompat.Type.navigationBars()) else bars.hide(WindowInsetsCompat.Type.navigationBars())
     }
 
     /**
@@ -65,5 +86,10 @@ class MainActivity : ComponentActivity() {
                 navigationBarStyle = SystemBarStyle.light(paper, paper),
             )
         }
+    }
+
+    private companion object {
+        /** Set once the curtain has been up in this run of the app. */
+        var curtainShown = false
     }
 }
