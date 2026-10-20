@@ -9,6 +9,7 @@ import { writeTiers } from "./commands/tier.ts";
 import { fetchLastfm } from "./commands/lastfm.ts";
 import { fetchYoutube } from "./commands/youtube.ts";
 import { verifyAll } from "./commands/verify.ts";
+import { date, wholeNumber } from "./args.ts";
 import { PILOT_YEARS, parseYears } from "./config.ts";
 
 const USAGE = "Usage: npm run <prompts|import|verify|report|review|index|youtube|lastfm|tier|publish> [-- --years 2003,2013 | 2000-2026] [-- --per-angle] [-- --search]";
@@ -45,11 +46,12 @@ async function main(): Promise<void> {
     case "tier":
       return writeTiers();
     case "publish":
+      // Checked before anything connects, so a typo can't half-publish.
       return publish({
-        days: Number.parseInt(values.days, 10),
-        from: values.from,
-        launch: values.launch,
-        seed: Number.parseInt(values.seed, 10),
+        days: wholeNumber("--days", values.days, 1, 366),
+        from: date("--from", values.from),
+        launch: date("--launch", values.launch),
+        seed: wholeNumber("--seed", values.seed, 0, 2 ** 31 - 1),
         production: values.production,
       });
     case "youtube":

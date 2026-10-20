@@ -12,6 +12,7 @@ import {
   TIERS,
 } from "./model.ts";
 import { type PreviewLookup, confirmPreview } from "./previews.ts";
+import { enforceRateLimit } from "./rate-limit.ts";
 import { currentStep, topPercent } from "./rules.ts";
 import { istDate, showEndsAt } from "./time.ts";
 
@@ -121,6 +122,8 @@ export function revealOf(song: SongDoc, stats: SongStatsDoc | undefined, solvedA
  * only in a tier's `reveal`, and only once that player's round is over.
  */
 export async function getShow(db: Firestore, uid: string, now: Date, lookup: PreviewLookup): Promise<ShowResponse> {
+  // A show is a dozen reads: counted first, so nobody can make them without limit.
+  await enforceRateLimit(db, uid, "show", now);
   const date = istDate(now);
   const schedule = await readSchedule(db, date);
   const rounds = new Map(

@@ -118,22 +118,30 @@ class FirebaseShowRepository @Inject constructor(
 
     /**
      * A call the server turns away as signed out (an expired session, or a sign-in it no longer
-     * knows) is retried once: first with a fresh token, and if the sign-in itself is gone, with a
-     * new anonymous one (AGENTS.md §8). Anything else comes back as it is.
+     * knows) is retried once: first with a fresh token, and only if the sign-in itself is rejected,
+     * with a new anonymous one (AGENTS.md §8). A refresh that fails for want of a connection keeps
+     * the sign-in: a new anonymous user would lose the player's rounds on the server.
      */
     private suspend fun <T> callSignedIn(call: suspend () -> T): Outcome<T, TryError> {
         val first = safeFunctionCall(call)
         if (first !is Outcome.Error || first.error != TryError.Data(DataError.Network.UNAUTHORIZED)) return first
-        val refreshed = try {
-            auth.currentUser?.getIdToken(true)?.await() != null
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            false
-        }
-        if (!refreshed) {
-            auth.signOut()
-            signIn()?.let { return Outcome.Error(TryError.Data(it)) }
+        val refreshError = auth.currentUser?.let { user ->
+            try {
+                user.getIdToken(true).await()
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                e.networkCause()
+            }
+        } ?: DataError.Network.UNAUTHORIZED
+        when (refreshError) {
+            null -> Unit
+            DataError.Network.UNAUTHORIZED -> {
+                auth.signOut()
+                signIn()?.let { return Outcome.Error(TryError.Data(it)) }
+            }
+            else -> return Outcome.Error(TryError.Data(refreshError))
         }
         return safeFunctionCall(call)
     }
@@ -180,11 +188,17 @@ class FirebaseShowRepository @Inject constructor(
      * played too, say), the server's show is fetched again and wins.
      */
     private suspend fun confirm(attempt: TryEntity, judged: SubmitTryDto): Outcome<RoundState, TryError> {
+        // A result this app doesn't know (from a newer server) can't be shown: the try is done
+        // with, and the show reloaded later decides what the round looks like.
+        val result = TryResult.entries.firstOrNull { it.name == judged.result } ?: run {
+            tryDao.updateState(attempt.requestId, TryState.FAILED.name, null)
+            return Outcome.Error(TryError.Data(DataError.Network.SERIALIZATION))
+        }
         tryDao.updateState(attempt.requestId, TryState.CONFIRMED.name, judged.result)
         val tier = Tier.valueOf(attempt.tier)
         val date = LocalDate.parse(attempt.date)
         val show = current?.takeIf { it.date == date }
-        val record = TryRecord(attempt.requestId, TryType.valueOf(attempt.type), attempt.guessedSongId, TryResult.valueOf(judged.result))
+        val record = TryRecord(attempt.requestId, TryType.valueOf(attempt.type), attempt.guessedSongId, result)
         val applied = ((show?.rounds?.get(tier) ?: RoundState(tier)).apply(record) as? Outcome.Success)?.data
             ?.takeIf { it.triesUsed == judged.triesUsed && it.status.name == judged.status }
         val round = applied?.copy(reveal = judged.reveal?.toSongReveal())

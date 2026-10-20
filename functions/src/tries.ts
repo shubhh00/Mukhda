@@ -12,7 +12,7 @@ import {
 } from "./model.ts";
 import type { PreviewLookup } from "./previews.ts";
 import { currentStep, judge, statsAfterRound, statusAfter } from "./rules.ts";
-import { type RateCount, RateLimitedError, countCall } from "./rate-limit.ts";
+import { enforceRateLimit } from "./rate-limit.ts";
 import { activeSong, revealOf, roundId, statsId } from "./show.ts";
 import { istDate } from "./time.ts";
 
@@ -55,11 +55,12 @@ async function answerSong(db: Firestore, songId: string, now: number): Promise<S
  * takes no more; a guess must be a known song. A round's first try fixes the song it's about.
  */
 export async function submitTry(db: Firestore, uid: string, request: SubmitTryRequest, now: Date, lookup: PreviewLookup): Promise<SubmitTryResponse> {
+  // Counted before anything else is read, and kept even if the try is then refused.
+  await enforceRateLimit(db, uid, "try", now);
   if (request.date !== istDate(now)) throw new GameErrorException("ROUND_CLOSED");
   const { date, tier, requestId, type } = request;
   const roundRef = db.doc(`rounds/${roundId(uid, date, tier)}`);
   const statsRef = db.doc(`songStats/${statsId(date, tier)}`);
-  const rateRef = db.doc(`rateLimits/${uid}`);
 
   // Reads that can't change under the transaction, and the network check for a tier's first
   // song, happen before it, side by side where they can.
@@ -71,12 +72,9 @@ export async function submitTry(db: Firestore, uid: string, request: SubmitTryRe
   const answer = existing ? await answerSong(db, existing.songId, now.getTime()) : await activeSong(db, date, tier, now, lookup);
 
   return db.runTransaction(async (tx) => {
-    const [roundSnap, statsSnap, rateSnap] = await tx.getAll(roundRef, statsRef, rateRef);
+    const [roundSnap, statsSnap] = await tx.getAll(roundRef, statsRef);
     const round = roundSnap?.data() as RoundDoc | undefined;
     const stats = statsSnap?.data() as SongStatsDoc | undefined;
-    const counted = countCall(rateSnap?.data() as RateCount | undefined, now);
-    if (!counted) throw new RateLimitedError();
-    tx.set(rateRef, counted);
     const tries = round?.tries ?? [];
 
     const seen = tries.find((t) => t.requestId === requestId);

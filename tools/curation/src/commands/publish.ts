@@ -104,7 +104,18 @@ export async function publish(options: PublishOptions): Promise<void> {
   }));
   const days = schedule(schedulable, existing, from, options.days, launch, options.seed);
 
-  const now = Timestamp.now();
+  // A song already published keeps the preview the server last checked: the server refreshes it,
+  // and the pool's copy may be older. A new song's preview is marked never checked, so the server
+  // confirms it with iTunes before trusting it, and plays the backup if it's gone.
+  const published = new Map<string, { previewUrl: string; previewUrlCachedAt: Timestamp }>();
+  for (let i = 0; i < answers.length; i += BATCH_SIZE) {
+    const refs = answers.slice(i, i + BATCH_SIZE).map((t) => db.doc(`songs/${t.songId}`));
+    for (const snap of await db.getAll(...refs)) {
+      const data = snap.data() as { previewUrl?: string; previewUrlCachedAt?: Timestamp } | undefined;
+      if (data?.previewUrl && data.previewUrlCachedAt) published.set(snap.id, { previewUrl: data.previewUrl, previewUrlCachedAt: data.previewUrlCachedAt });
+    }
+  }
+  const neverChecked = Timestamp.fromMillis(0);
   const songDocs: [string, object][] = answers.map((t) => {
     const entry = indexed.get(t.songId)!;
     const track = tracks.get(t.songId)!.track as { trackId: number; previewUrl: string; trackViewUrl: string; artworkUrl100?: string };
@@ -118,8 +129,8 @@ export async function publish(options: PublishOptions): Promise<void> {
         filmTitle: entry.filmTitle,
         year: entry.year,
         composer: t.composer,
-        previewUrl: track.previewUrl,
-        previewUrlCachedAt: now,
+        previewUrl: published.get(t.songId)?.previewUrl ?? track.previewUrl,
+        previewUrlCachedAt: published.get(t.songId)?.previewUrlCachedAt ?? neverChecked,
         startOffsetMs: 0,
         artworkUrl: track.artworkUrl100?.replace("100x100bb", "600x600bb") ?? null,
         appleMusicUrl: track.trackViewUrl ?? null,

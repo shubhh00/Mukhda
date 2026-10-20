@@ -181,11 +181,13 @@ test("no show scheduled is an error, not an empty show", async () => {
   await assert.rejects(getShow(db(), UID, new Date("2026-11-01T09:00:00Z"), noLookup), /No show scheduled/);
 });
 
-test("a 31st try in a minute is turned away", async () => {
-  for (let i = 0; i < 4; i++) await skip();
-  // Fill the minute up to the limit with requests the round has already seen.
-  const id = requestId();
-  await skip(NOON, id);
-  for (let i = 0; i < 25; i++) await skip(NOON, id);
-  await assert.rejects(skip(NOON, id), /Too many tries/);
+test("a 31st try in a minute is turned away, refused ones included", async () => {
+  // Refused tries (an unknown song) count too, so they can't be repeated without limit.
+  for (let i = 0; i < 30; i++) await rejects(guess("s_nonexistent"), "INVALID_SONG");
+  await assert.rejects(skip(), /Too many requests/);
+});
+
+test("a 61st show in a minute is turned away", async () => {
+  for (let i = 0; i < 60; i++) await getShow(db(), UID, NOON, noLookup);
+  await assert.rejects(getShow(db(), UID, NOON, noLookup), /Too many requests/);
 });

@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { currentStep, judge, statsAfterRound, statusAfter, topPercent } from "../src/rules.ts";
 import { addDays, istDate, showEndsAt } from "../src/time.ts";
 import { parseSubmitTry } from "../src/validate.ts";
-import { TRIES_PER_MINUTE, countCall } from "../src/rate-limit.ts";
+import { LIMITS, countCall } from "../src/rate-limit.ts";
 
 const answer = { songId: "s_1", filmId: "f_1" };
 
@@ -62,11 +62,11 @@ test("submitTry payloads are checked before anything runs", () => {
   }
 });
 
-test("the rate limit allows 30 tries a minute and starts again the next minute", () => {
+test("the rate limit allows its calls a minute and starts again the next minute", () => {
   const at = (s: number) => new Date(Date.UTC(2026, 9, 12, 9, 0, 0) + s * 1000);
-  let count = countCall(undefined, at(0));
-  for (let i = 2; i <= TRIES_PER_MINUTE; i++) count = countCall(count!, at(i));
-  assert.deepEqual(count?.count, TRIES_PER_MINUTE);
-  assert.equal(countCall(count!, at(40)), null);
-  assert.deepEqual(countCall(count!, at(61))?.count, 1);
+  let count = countCall(undefined, at(0), LIMITS.try);
+  for (let i = 2; i <= LIMITS.try; i++) count = countCall(count!, at(i), LIMITS.try);
+  assert.deepEqual(count?.count, LIMITS.try);
+  assert.equal(countCall(count!, at(40), LIMITS.try), null);
+  assert.deepEqual(countCall(count!, at(61), LIMITS.try)?.count, 1);
 });
