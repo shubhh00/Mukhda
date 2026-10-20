@@ -11,3 +11,11 @@ test("publish flags are checked before anything runs", () => {
   assert.equal(date("--launch", undefined), undefined);
   assert.throws(() => date("--from", "1-11-2026"), /--from must be a date/);
 });
+
+test("an empty number and a date that doesn't exist are refused", () => {
+  assert.throws(() => wholeNumber("--seed", "", 0, 100), /--seed/);
+  assert.throws(() => wholeNumber("--seed", "  ", 0, 100), /--seed/);
+  assert.throws(() => date("--from", "2026-02-30"), /--from must be a date/);
+  assert.throws(() => date("--from", "2026-13-01"), /--from must be a date/);
+  assert.equal(date("--from", "2028-02-29"), "2028-02-29");
+});
