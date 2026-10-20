@@ -413,7 +413,7 @@ private fun RoundOver(won: Boolean, modifier: Modifier = Modifier) {
     Text(
         text = stringResource(if (won) R.string.round_won else R.string.round_lost),
         style = MukhdaTheme.typography.bodyStrong,
-        color = if (won) MukhdaTheme.colors.teal else MukhdaTheme.colors.red,
+        color = if (won) MukhdaTheme.colors.win else MukhdaTheme.colors.red,
         textAlign = TextAlign.Center,
         modifier = modifier.fillMaxWidth(),
     )

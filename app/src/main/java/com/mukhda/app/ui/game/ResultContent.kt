@@ -91,11 +91,12 @@ internal fun TrySquares(slots: List<TrySlotUi>, size: Dp, gap: Dp, modifier: Mod
                     val (fill, mark) = when (slot.stamp) {
                         Stamp.WRONG -> colors.ticketWrong to Mark.CROSS
                         Stamp.RIGHT_FILM -> colors.ticketRightFilm to Mark.CROSS
-                        Stamp.CORRECT -> colors.ticketCorrect to Mark.TICK
+                        Stamp.CORRECT -> colors.win to Mark.TICK
                         Stamp.SKIPPED -> colors.ladderPlayed to Mark.DASH
                     }
+                    val ink = if (mark == Mark.TICK) colors.marigold else colors.ticketPaper
                     Box(Modifier.size(size).background(fill)) {
-                        Canvas(Modifier.fillMaxSize().padding(size * 0.26f)) { drawMark(mark, colors.ticketPaper) }
+                        Canvas(Modifier.fillMaxSize().padding(size * 0.26f)) { drawMark(mark, ink) }
                     }
                 }
             }
@@ -201,7 +202,7 @@ internal fun RevealDetails(round: RoundUi, reveal: RevealUi, isPlaying: Boolean,
 @Composable
 private fun VerdictStamp(verdict: Verdict) {
     val colors = MukhdaTheme.colors
-    val color = if (verdict.isCelebrated) colors.teal else colors.red
+    val color = if (verdict.isCelebrated) colors.win else colors.red
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = stringResource(R.string.todays_performance).uppercase(),

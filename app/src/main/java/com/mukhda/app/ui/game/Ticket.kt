@@ -50,7 +50,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -66,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaTheme
+import com.mukhda.app.ui.theme.paper
 import com.mukhda.app.ui.theme.rememberAnimationsEnabled
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.Verdict
@@ -105,8 +105,8 @@ fun TicketOverlay(ticket: TicketUi, round: RoundUi, onAction: (GameAction) -> Un
     Box(
         modifier = Modifier
             .fillMaxSize()
-            // Flat paper, the same as the shared image's, so the two read as one sheet.
-            .background(colors.paper)
+            // The game's own dotted paper.
+            .paper(colors, dots = colors.red.copy(alpha = 0.10f))
             // Swallows taps, so nothing on the game screen underneath reacts.
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
             .statusBarsPadding()
@@ -121,15 +121,18 @@ fun TicketOverlay(ticket: TicketUi, round: RoundUi, onAction: (GameAction) -> Un
             Text(stringResource(R.string.ticket_heading).uppercase(), style = type.label, color = colors.muted)
             Spacer(Modifier.weight(1f))
             SwingingTicket(animationsEnabled = rememberAnimationsEnabled()) {
-                // Recorded into [layer] as it draws, so Share sends exactly this, on its own paper:
-                // the swing is applied outside it, so a share is always the ticket at rest.
+                // Recorded into [layer] as it draws, so Share sends exactly this: on flat paper there,
+                // over the dotted page here. The swing is applied outside it, so a share is always
+                // the ticket at rest.
                 Box(
                     modifier = Modifier
                         .drawWithContent {
-                            layer.record { this@drawWithContent.drawContent() }
-                            drawLayer(layer)
+                            layer.record {
+                                drawRect(colors.paper)
+                                this@drawWithContent.drawContent()
+                            }
+                            drawContent()
                         }
-                        .background(colors.paper)
                         .padding(24.dp),
                 ) {
                     Ticket(ticket, modifier = Modifier.rotate(TICKET_TILT))
@@ -253,7 +256,7 @@ fun Ticket(ticket: TicketUi, modifier: Modifier = Modifier) {
                 )
                 BasicText(
                     text = verdictHeadline(ticket.verdict),
-                    style = type.verdict.copy(color = if (ticket.verdict.isCelebrated) colors.teal else colors.red),
+                    style = type.verdict.copy(color = if (ticket.verdict.isCelebrated) colors.win else colors.red),
                     maxLines = 1,
                     autoSize = TextAutoSize.StepBased(minFontSize = 30.sp, maxFontSize = 58.sp),
                 )

@@ -122,7 +122,7 @@ private fun StampLabel(stamp: Stamp) {
         Stamp.WRONG -> R.string.stamp_wrong to colors.red
         Stamp.RIGHT_FILM -> R.string.stamp_right_film to colors.amberInk
         Stamp.SKIPPED -> R.string.stamp_skipped to colors.muted
-        Stamp.CORRECT -> R.string.stamp_correct to colors.teal
+        Stamp.CORRECT -> R.string.stamp_correct to colors.win
     }
     Text(
         text = stringResource(text),

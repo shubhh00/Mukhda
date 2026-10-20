@@ -34,7 +34,8 @@ data class MukhdaColors(
     val marigoldDeep: Color = Color(0xFFE09A12),
     val amberBg: Color = Color(0xFFF6E2AE),
     val amberInk: Color = Color(0xFF8A5A00),
-    val teal: Color = Color(0xFF1F7C80),
+    /** A right answer: the tick, the CORRECT and verdict stamps. The curtain's deep velvet, not another red. */
+    val win: Color = Color(0xFF5A0C10),
 
     // Disabled button
     val disabled: Color = Color(0xFFD9C9A6),
@@ -61,8 +62,7 @@ data class MukhdaColors(
     /** The ticket's own paper, a shade lighter than the page. */
     val ticketPaper: Color = Color(0xFFFBF2DD),
 
-    // Try squares on the shared ticket.
+    // Try squares on the shared ticket; a right one is [win], with a marigold tick.
     val ticketWrong: Color = Color(0xFFC8261E),
     val ticketRightFilm: Color = Color(0xFFE09A12),
-    val ticketCorrect: Color = Color(0xFF2E8B4F),
 )
