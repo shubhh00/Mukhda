@@ -7,10 +7,12 @@ import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
+import com.mukhda.domain.round.SongReveal
 import com.mukhda.domain.round.TryRecord
 import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
 import com.mukhda.domain.show.TryError
+import kotlinx.coroutines.CompletableDeferred
 import java.time.Instant
 import java.time.LocalDate
 
@@ -22,9 +24,12 @@ class FakeShowRepository : ShowRepository {
     var loadError: DataError? = null
     var nextTryError: TryError? = null
     var judge: (songId: String) -> TryResult = { TryResult.WRONG }
+    /** When set, tries wait for it before the "server" answers, to see the screen in between. */
+    var answerGate: CompletableDeferred<Unit>? = null
     val requestIds = mutableListOf<String>()
     var loads = 0
         private set
+    val reveal = SongReveal("s7", "Kal Ho Naa Ho", "Kal Ho Naa Ho", 2003, "https://example.com/art.jpg", "https://music.apple.com/x")
 
     override suspend fun todaysShow(): Outcome<Show, DataError> {
         loads++
@@ -42,13 +47,16 @@ class FakeShowRepository : ShowRepository {
         songId: String?,
     ): Outcome<RoundState, TryError> {
         requestIds += requestId
+        answerGate?.await()
         nextTryError?.let {
             nextTryError = null
             return Outcome.Error(it)
         }
         val result = if (type == TryType.SKIP) TryResult.SKIPPED else judge(songId!!)
         val applied = rounds.getValue(tier).apply(TryRecord(requestId, type, songId, result))
-        val round = (applied as Outcome.Success).data
+        val judged = (applied as Outcome.Success).data
+        // Like the server: the song is revealed once the round is over, never before.
+        val round = if (judged.status.isFinished) judged.copy(reveal = reveal) else judged
         rounds = rounds + (tier to round)
         return Outcome.Success(round)
     }

@@ -4,4 +4,12 @@
     <style name="Theme.Mukhda" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/paper</item>
     </style>
+
+    <!-- The system's launch screen: plain velvet, no icon, for the moment before the app's own
+         launch curtain (LaunchCurtain) is drawn over it. -->
+    <style name="Theme.Mukhda.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/velvet</item>
+        <item name="windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+        <item name="postSplashScreenTheme">@style/Theme.Mukhda</item>
+    </style>
 </resources>

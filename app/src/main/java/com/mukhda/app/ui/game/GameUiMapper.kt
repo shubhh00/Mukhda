@@ -4,6 +4,7 @@ import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.RoundStatus
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.round.RoundState
+import com.mukhda.domain.round.SongReveal
 import com.mukhda.domain.search.SearchSong
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -23,6 +24,14 @@ fun TryResult.toStamp(): Stamp = when (this) {
     TryResult.SKIPPED -> Stamp.SKIPPED
 }
 
+/** The round with a try still waiting for the connection, in the first free slot. */
+fun RoundUi.withSending(song: SearchSong?): RoundUi {
+    val at = slots.indexOfFirst { it is TrySlotUi.Empty }
+    if (at == -1) return this
+    val sending = TrySlotUi.Sending(slots[at].number, song?.title, song?.let { "${it.filmTitle} · ${it.year}" })
+    return copy(slots = slots.toMutableList().also { it[at] = sending }, isSending = true)
+}
+
 /** Five slots: one per try made, then numbered empty ones. [songs] fills in what was guessed. */
 fun RoundState.toRoundUi(songs: Map<String, SearchSong>): RoundUi {
     val used = tries.mapIndexed { i, attempt ->
@@ -40,5 +49,16 @@ fun RoundState.toRoundUi(songs: Map<String, SearchSong>): RoundUi {
         slots = used + empty,
         isOpen = status == RoundStatus.OPEN,
         isWon = status == RoundStatus.WON,
+        verdict = verdict,
+        solvedAtStep = solvedAtStep,
+        // Only a finished round can carry one; the check keeps an open round from ever showing it.
+        reveal = reveal?.takeIf { status.isFinished }?.toRevealUi(),
     )
 }
+
+fun SongReveal.toRevealUi(): RevealUi = RevealUi(
+    title = title,
+    detail = "$filmTitle · $year",
+    artworkUrl = artworkUrl,
+    appleMusicUrl = appleMusicUrl,
+)

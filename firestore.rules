@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Clients read and write nothing directly. Every game read and write goes through the callable
+// functions, which use the Admin SDK and aren't bound by these rules.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

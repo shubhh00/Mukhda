@@ -1,7 +1,9 @@
 <resources>
     <string name="app_name">Mukhda</string>
 
-    <string name="wordmark" translatable="false">MUKHDA</string>
+    <!-- The wordmark in the header and on the ticket, in Hindi like the app icon. -->
+    <string name="wordmark" translatable="false">मुखड़ा</string>
+    <string name="launch_tagline">Five songs · A new show every day</string>
 
     <string name="tier_easy">Easy</string>
     <string name="tier_medium">Medium</string>
@@ -11,17 +13,33 @@
 
     <!-- Game screen -->
     <string name="show_line">SHOW NO. %1$d · %2$s</string>
-    <string name="streak_badge">%1$d HOUSEFULL</string>
+    <!-- The streak: days in a row with a try in any tier. -->
+    <plurals name="days_housefull">
+        <item quantity="one">%1$d day housefull</item>
+        <item quantity="other">%1$d days housefull</item>
+    </plurals>
     <string name="clip_of">Clip %1$d of %2$d</string>
-    <string name="clip_0">0.1 sec</string>
-    <string name="clip_1">0.5 sec</string>
-    <string name="clip_2">1 sec</string>
-    <string name="clip_3">2 sec</string>
+    <string name="clip_0">0.5 sec</string>
+    <string name="clip_1">1 sec</string>
+    <string name="clip_2">2 sec</string>
+    <string name="clip_3">4 sec</string>
     <string name="clip_full">Full</string>
-    <!-- Under the two narrowest ladder bars, where "0.1 sec" doesn't fit. -->
-    <string name="ladder_0">0.1</string>
-    <string name="ladder_1">0.5</string>
+    <!-- Under the two narrowest ladder bars, where "0.5 sec" doesn't fit. -->
+    <string name="ladder_0">0.5</string>
+    <string name="ladder_1">1 sec</string>
     <string name="now_showing">Now showing</string>
+    <!-- A try that couldn't reach the server yet. -->
+    <string name="slot_sending">Sending…</string>
+    <string name="try_queued">No connection. Your try will go through when you\'re back online.</string>
+    <!-- The valance's lettering through a round, like a film's running order: one per try used. -->
+    <string name="marquee_reel_two">Reel two</string>
+    <string name="marquee_interval">Interval</string>
+    <string name="marquee_second_half">Second half</string>
+    <string name="marquee_climax">Climax</string>
+    <string name="marquee_won">Happy ending</string>
+    <string name="marquee_lost">The end</string>
+    <!-- The whole song, played again after the reveal. -->
+    <string name="marquee_encore">Encore</string>
     <string name="cd_play_clip">Play clip</string>
     <string name="cd_stop_clip">Stop clip</string>
 
@@ -46,6 +64,45 @@
     <string name="stop_clip">■ STOP</string>
     <string name="apple_music_credit" translatable="false">PREVIEWS COURTESY OF APPLE MUSIC</string>
     <string name="retry">Retry</string>
+
+    <!-- Result -->
+    <!-- Over the verdict on the result card and the ticket: "Today's performance: BLOCKBUSTER!" -->
+    <string name="todays_performance">Today\'s performance</string>
+    <string name="verdict_blockbuster">Blockbuster</string>
+    <string name="verdict_superhit">Superhit</string>
+    <string name="verdict_hit">Hit</string>
+    <string name="verdict_average">Average</string>
+    <string name="verdict_flop">Flop</string>
+    <string name="verdict_disaster">Disaster</string>
+    <string name="solved_on">Got it on the %1$s</string>
+    <string name="solved_clip_0">half-second clip</string>
+    <string name="solved_clip_1">1-second clip</string>
+    <string name="solved_clip_2">2-second clip</string>
+    <string name="solved_clip_3">4-second clip</string>
+    <string name="solved_clip_4">full preview</string>
+    <string name="out_of_tries">Out of tries</string>
+    <string name="listen_on_apple_music">Listen on Apple Music</string>
+    <string name="play_the_song">▶ PLAY THE SONG</string>
+    <string name="tries_used">%1$d of 5 tries</string>
+    <string name="share_ticket">Share ticket</string>
+    <string name="next_tier">Next: %1$s</string>
+    <string name="next_show_in">Next show in %1$s</string>
+    <string name="cd_poster">Soundtrack cover of %1$s</string>
+
+    <!-- Ticket -->
+    <string name="ticket_heading">Your ticket for today</string>
+    <string name="ticket_on">On the %1$s</string>
+    <string name="ticket_tagline">Five songs.\nA new show every day.</string>
+    <string name="ticket_get_it">Get it on Google Play</string>
+    <string name="ticket_no_spoilers">No song or film name on the ticket</string>
+    <string name="share">Share</string>
+    <string name="cd_close">Close</string>
+    <!-- Shared with the ticket image. %1$d show, %2$s tier, %3$s verdict, %4$s clip, %5$s squares, %6$s link. -->
+    <string name="share_text">Mukhda · Show No. %1$d · %2$s · %3$s (%4$s)
+%5$s
+%6$s</string>
+    <string name="share_out_of_tries">out of tries</string>
+    <string name="play_store_url" translatable="false">https://play.google.com/store/apps/details?id=com.mukhda.app</string>
     <string name="volume_low">Turn up the volume. Clips are short.</string>
 
     <string name="error_round_closed">This show has ended. Loading today\'s show.</string>

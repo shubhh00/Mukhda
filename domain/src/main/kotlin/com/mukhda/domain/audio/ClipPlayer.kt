@@ -15,7 +15,7 @@ data class Preview(
 
 /**
  * Plays exact windows of previews. Clips never stream: [cache] downloads whole previews first, so
- * a 100 ms clip can't stall halfway.
+ * a half-second clip can't stall halfway.
  */
 interface ClipPlayer {
     /** Downloads every preview not cached yet. Retries a failed download before giving up. */
@@ -38,7 +38,7 @@ interface ClipPlayer {
      */
     suspend fun wakeSpeaker()
 
-    /** True when media volume is low enough that a 0.1 s clip could go unheard. */
+    /** True when media volume is low enough that a half-second clip could go unheard. */
     fun isVolumeLow(): Boolean
 
     /** Frees the player. The next [play] creates a new one. */

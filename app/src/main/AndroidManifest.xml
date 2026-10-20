@@ -15,6 +15,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:theme="@style/Theme.Mukhda.Starting"
             android:screenOrientation="portrait"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
@@ -23,6 +24,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Hands the shared ticket image to the app the player shares it with. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="paper">#FFF3E3C3</color>
-    <color name="maroon_band">#FF7A1027</color>
+    <!-- MukhdaColors.paper, for the window before Compose draws. -->
+    <color name="paper">#FFEFE2C4</color>
+    <!-- The launch curtain's velvet (MukhdaColors.velvetDark). -->
+    <color name="velvet">#FF5A0C10</color>
 </resources>

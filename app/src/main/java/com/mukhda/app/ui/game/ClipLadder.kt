@@ -30,8 +30,8 @@ fun clipLengthRes(step: Int): Int = when (step) {
     else -> R.string.clip_full
 }
 
-/** Each step's bar is roughly as wide as its clip is long: 0.1 s and 0.5 s narrow, full the widest. */
-private val StepWeights = floatArrayOf(1f, 1f, 2f, 3f, 5f)
+/** Each step's bar grows with its clip: 0.5 s narrowest, the full preview widest. */
+private val StepWeights = floatArrayOf(1f, 1.4f, 2.2f, 3.4f, 4f)
 
 /** "CLIP 2 OF 5 · 0.5 SEC" over five bars: played ones dark, the current one red. */
 @Composable
@@ -86,7 +86,7 @@ fun ClipLadderStrip(currentStep: Int, modifier: Modifier = Modifier) {
     }
 }
 
-/** Short labels under the bars; the first two bars are too narrow for "0.1 sec". */
+/** Short labels under the bars; the first bar is too narrow for "0.5 sec". */
 @StringRes
 private fun stepLabelRes(step: Int): Int = when (step) {
     0 -> R.string.ladder_0

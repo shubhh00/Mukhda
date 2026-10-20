@@ -16,8 +16,12 @@ import com.mukhda.domain.DataError
 import com.mukhda.domain.GameError
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
+import com.mukhda.domain.model.Verdict
+import com.mukhda.domain.round.RoundState
+import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -50,7 +54,9 @@ class GameViewModelTest {
     @AfterEach
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex, player)
+    private val history = FakeRoundHistory()
+
+    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex, player, history)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -254,7 +260,9 @@ class GameViewModelTest {
         val vm = viewModel()
         vm.onAction(GameAction.OnPlayClick)
         assertThat(vm.state.value.isPlaying).isTrue()
-        advanceTimeBy(150)
+        advanceTimeBy(450)
+        assertThat(vm.state.value.isPlaying).isTrue()
+        advanceTimeBy(100)
         assertThat(vm.state.value.isPlaying).isFalse()
     }
 
@@ -270,17 +278,17 @@ class GameViewModelTest {
         vm.onAction(GameAction.OnTierClick(Tier.HARD))
         vm.onAction(GameAction.OnSkipClick)
         vm.onAction(GameAction.OnPlayClick)
-        assertThat(player.played.single()).isEqualTo(show.previews.getValue(Tier.HARD) to 500L)
+        assertThat(player.played.single()).isEqualTo(show.previews.getValue(Tier.HARD) to 1_000L)
     }
 
     @Test
     fun `the next clip is preloaded after loading, a try and a tier change`() = runTest(dispatcher) {
         val vm = viewModel()
-        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 100L)
-        vm.onAction(GameAction.OnSkipClick)
         assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 500L)
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.EASY) to 1_000L)
         vm.onAction(GameAction.OnTierClick(Tier.LEGEND))
-        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.LEGEND) to 100L)
+        assertThat(player.preloaded.last()).isEqualTo(show.previews.getValue(Tier.LEGEND) to 500L)
     }
 
     @Test
@@ -291,6 +299,187 @@ class GameViewModelTest {
         repeat(5) { vm.onAction(GameAction.OnSkipClick) }
         // Four skips each set up the next clip; the fifth closes the round.
         assertThat(player.speakerWakes).isEqualTo(afterLoad + 4)
+    }
+
+    @Test
+    fun `a lost round reveals the song, its verdict and the next tier`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        val round = vm.state.value.round!!
+        assertThat(round.isOpen).isFalse()
+        assertThat(round.verdict).isEqualTo(Verdict.DISASTER)
+        assertThat(round.reveal?.title).isEqualTo("Kal Ho Naa Ho")
+        assertThat(round.reveal?.detail).isEqualTo("Kal Ho Naa Ho · 2003")
+        assertThat(vm.state.value.nextTier).isEqualTo(Tier.MEDIUM)
+    }
+
+    @Test
+    fun `an open round never shows a reveal, even if one arrives`() = runTest(dispatcher) {
+        show.rounds = show.rounds + (Tier.EASY to RoundState(Tier.EASY, reveal = show.reveal))
+        val vm = viewModel()
+        assertThat(vm.state.value.round!!.reveal).isNull()
+    }
+
+    @Test
+    fun `won rounds keep the step they were solved on`() = runTest(dispatcher) {
+        show.judge = { TryResult.CORRECT }
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnSuggestionClick("s7"))
+        vm.onAction(GameAction.OnGuessClick)
+        val round = vm.state.value.round!!
+        assertThat(round.verdict).isEqualTo(Verdict.SUPERHIT)
+        assertThat(round.solvedAtStep).isEqualTo(1)
+    }
+
+    @Test
+    fun `a try with no connection shows as sending and blocks the next one`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.NO_INTERNET)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        val round = vm.state.value.round!!
+        assertThat(round.slots.first()).isInstanceOf<TrySlotUi.Sending>()
+        assertThat(round.isSending).isTrue()
+        assertThat(vm.state.value.canSkip).isFalse()
+    }
+
+    @Test
+    fun `a waiting try clears once the show loads again`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.REQUEST_TIMEOUT)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        val loadsBefore = show.loads
+        advanceTimeBy(3_100)
+        assertThat(show.loads).isEqualTo(loadsBefore + 1)
+        val round = vm.state.value.round!!
+        assertThat(round.isSending).isFalse()
+        assertThat(vm.state.value.canSkip).isTrue()
+    }
+
+    @Test
+    fun `a refused try isn't kept as sending`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.SERVER_ERROR)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
+    fun `the streak counts the days played up to the show date`() = runTest(dispatcher) {
+        val today = show.date
+        history.rounds.value = listOf(
+            Streak.DayRound(today.minusDays(1), triesUsed = 2),
+            Streak.DayRound(today.minusDays(2), triesUsed = 5),
+            // A gap: three days ago untouched, so four days ago doesn't count.
+            Streak.DayRound(today.minusDays(4), triesUsed = 1),
+        )
+        val vm = viewModel()
+        // Today has no try yet, and that doesn't break it.
+        assertThat(vm.state.value.streak).isEqualTo(2)
+        // A confirmed try today, saved on the phone, extends it at once.
+        history.rounds.value = history.rounds.value + Streak.DayRound(today, triesUsed = 1)
+        assertThat(vm.state.value.streak).isEqualTo(3)
+    }
+
+    @Test
+    fun `a round opened but never tried doesn't count for the streak`() = runTest(dispatcher) {
+        history.rounds.value = listOf(Streak.DayRound(show.date.minusDays(1), triesUsed = 0))
+        assertThat(viewModel().state.value.streak).isEqualTo(0)
+    }
+
+    @Test
+    fun `a skip shows at once, before the server answers`() = runTest(dispatcher) {
+        show.answerGate = CompletableDeferred()
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        val waiting = vm.state.value.round!!
+        assertThat((waiting.slots.first() as TrySlotUi.Used).stamp).isEqualTo(Stamp.SKIPPED)
+        assertThat(waiting.currentStep).isEqualTo(1)
+        // The buttons stay as they are; a second tap meanwhile is ignored.
+        assertThat(vm.state.value.canSkip).isTrue()
+        vm.onAction(GameAction.OnSkipClick)
+        show.answerGate!!.complete(Unit)
+        assertThat(vm.state.value.round!!.slots.count { it is TrySlotUi.Used }).isEqualTo(1)
+        assertThat(show.requestIds).hasSize(1)
+    }
+
+    @Test
+    fun `a guess shows as sending until its verdict comes back`() = runTest(dispatcher) {
+        show.answerGate = CompletableDeferred()
+        val vm = viewModel()
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnSuggestionClick("s7"))
+        vm.onAction(GameAction.OnGuessClick)
+        assertThat(vm.state.value.round!!.slots.first()).isInstanceOf<TrySlotUi.Sending>()
+        show.answerGate!!.complete(Unit)
+        assertThat((vm.state.value.round!!.slots.first() as TrySlotUi.Used).stamp).isEqualTo(Stamp.WRONG)
+    }
+
+    @Test
+    fun `a skip the server refuses is taken back`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Rule(GameError.TRIES_EXHAUSTED)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(vm.state.value.round!!.slots.none { it is TrySlotUi.Used }).isTrue()
+    }
+
+    @Test
+    fun `a correct guess celebrates, once`() = runTest(dispatcher) {
+        show.judge = { TryResult.CORRECT }
+        val vm = viewModel()
+        type(vm, "kal ho")
+        vm.onAction(GameAction.OnSuggestionClick("s7"))
+        vm.events.test {
+            vm.onAction(GameAction.OnGuessClick)
+            assertThat(awaitItem()).isEqualTo(GameEvent.Celebrate(Verdict.BLOCKBUSTER))
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `a lost round doesn't celebrate`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.events.test {
+            repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+            expectNoEvents()
+        }
+    }
+
+    @Test
+    fun `next tier skips rounds already started, and moves there`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnTierClick(Tier.MEDIUM))
+        vm.onAction(GameAction.OnSkipClick)
+        vm.onAction(GameAction.OnTierClick(Tier.EASY))
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        assertThat(vm.state.value.nextTier).isEqualTo(Tier.HARD)
+        vm.onAction(GameAction.OnNextTierClick)
+        assertThat(vm.state.value.selectedTier).isEqualTo(Tier.HARD)
+    }
+
+    @Test
+    fun `once a round is over, play gives the whole song`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnPlayClick)
+        assertThat(player.played.single().second).isNull()
+    }
+
+    @Test
+    fun `the ticket opens and closes`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnShareTicketClick)
+        assertThat(vm.state.value.isTicketOpen).isTrue()
+        vm.onAction(GameAction.OnTicketClose)
+        assertThat(vm.state.value.isTicketOpen).isFalse()
+    }
+
+    @Test
+    fun `the countdown runs to the server's end of show`() = runTest(dispatcher) {
+        val vm = viewModel()
+        assertThat(vm.state.value.endsAtEpochMs).isEqualTo(java.time.Instant.parse("2026-10-13T18:30:00Z").toEpochMilli())
     }
 
     @Test
