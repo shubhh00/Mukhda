@@ -7,8 +7,9 @@ import kotlinx.serialization.Serializable
 @Serializable
 data object GameRoute
 
-fun NavGraphBuilder.gameGraph() {
+/** [onShowReady] is called once the first show has loaded or failed, for the launch screen. */
+fun NavGraphBuilder.gameGraph(onShowReady: () -> Unit = {}) {
     composable<GameRoute> {
-        GameRoot()
+        GameRoot(onShowReady = onShowReady)
     }
 }

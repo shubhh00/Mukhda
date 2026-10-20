@@ -343,7 +343,7 @@ private fun BoxScope.CurtainHalf(
 }
 
 /** Vertical folds: dark, mid, highlight, mid, dark, deepest, every 26 dp; shaded toward the opening. */
-private fun DrawScope.drawVelvet(colors: MukhdaColors, innerEdgeOnRight: Boolean) {
+internal fun DrawScope.drawVelvet(colors: MukhdaColors, innerEdgeOnRight: Boolean) {
     val period = 26.dp.toPx()
     drawRect(
         Brush.horizontalGradient(
@@ -371,7 +371,7 @@ private fun DrawScope.drawVelvet(colors: MukhdaColors, innerEdgeOnRight: Boolean
 }
 
 /** Darker at the top under the valance and at the hem, like stage lighting. */
-private fun DrawScope.drawStageShade() {
+internal fun DrawScope.drawStageShade() {
     drawRect(
         Brush.verticalGradient(
             0f to Color.Black.copy(alpha = 0.3f),

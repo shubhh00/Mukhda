@@ -4,10 +4,14 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,6 +33,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -42,9 +47,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -58,9 +66,11 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaTheme
+import com.mukhda.app.ui.theme.rememberAnimationsEnabled
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.Verdict
 import java.io.File
+import kotlin.math.tanh
 import kotlin.random.Random
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -110,17 +120,20 @@ fun TicketOverlay(ticket: TicketUi, round: RoundUi, onAction: (GameAction) -> Un
         ) {
             Text(stringResource(R.string.ticket_heading).uppercase(), style = type.label, color = colors.muted)
             Spacer(Modifier.weight(1f))
-            // Recorded into [layer] as it draws, so Share sends exactly this, on its own paper.
-            Box(
-                modifier = Modifier
-                    .drawWithContent {
-                        layer.record { this@drawWithContent.drawContent() }
-                        drawLayer(layer)
-                    }
-                    .background(colors.paper)
-                    .padding(24.dp),
-            ) {
-                Ticket(ticket, modifier = Modifier.rotate(TICKET_TILT))
+            SwingingTicket(animationsEnabled = rememberAnimationsEnabled()) {
+                // Recorded into [layer] as it draws, so Share sends exactly this, on its own paper:
+                // the swing is applied outside it, so a share is always the ticket at rest.
+                Box(
+                    modifier = Modifier
+                        .drawWithContent {
+                            layer.record { this@drawWithContent.drawContent() }
+                            drawLayer(layer)
+                        }
+                        .background(colors.paper)
+                        .padding(24.dp),
+                ) {
+                    Ticket(ticket, modifier = Modifier.rotate(TICKET_TILT))
+                }
             }
             Spacer(Modifier.weight(1f))
             BarButton(
@@ -142,6 +155,47 @@ fun TicketOverlay(ticket: TicketUi, round: RoundUi, onAction: (GameAction) -> Un
                 modifier = Modifier.padding(top = 10.dp),
             )
         }
+    }
+}
+
+/**
+ * A ticket you can play with. It rises in from below, turning as it comes, when the screen opens;
+ * pulled sideways, it swings up from the bottom corner opposite the pull, as if hinged there, and
+ * springs back with a bounce when let go. Drawn only through [graphicsLayer], so it never
+ * recomposes as it moves. With animations off it simply sits there.
+ */
+@Composable
+private fun SwingingTicket(animationsEnabled: Boolean, content: @Composable () -> Unit) {
+    val pull = remember { Animatable(0f) }
+    val arrival = remember { Animatable(if (animationsEnabled) 0f else 1f) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(animationsEnabled) {
+        if (animationsEnabled) arrival.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessLow))
+    }
+    val letGo: () -> Unit = { scope.launch { pull.animateTo(0f, spring(dampingRatio = 0.38f, stiffness = Spring.StiffnessMediumLow)) } }
+    Box(
+        modifier = Modifier
+            .pointerInput(animationsEnabled) {
+                if (!animationsEnabled) return@pointerInput
+                detectHorizontalDragGestures(onDragEnd = letGo, onDragCancel = letGo) { change, amount ->
+                    change.consume()
+                    scope.launch { pull.snapTo(pull.value + amount) }
+                }
+            }
+            .graphicsLayer {
+                // How far it's pulled, as a share of its width; it gives less the further it goes.
+                val reach = size.width.coerceAtLeast(1f)
+                val swing = tanh(pull.value / reach)
+                // Hinged at the bottom corner away from the pull, so the pulled side lifts.
+                transformOrigin = TransformOrigin(if (swing >= 0f) 0f else 1f, 1f)
+                val rising = 1f - arrival.value
+                rotationZ = -swing * MAX_SWING_DEGREES + rising * ARRIVAL_TURN_DEGREES
+                translationX = swing * reach * 0.18f
+                translationY = rising * size.height * 0.8f
+                alpha = arrival.value.coerceIn(0f, 1f)
+            },
+    ) {
+        content()
     }
 }
 
@@ -362,7 +416,12 @@ private fun shareText(ticket: TicketUi, round: RoundUi): String {
 /** Saves the ticket to the app's cache and opens the share sheet with it and the text. */
 private suspend fun shareTicket(context: Context, image: Bitmap, text: String) {
     val file = withContext(Dispatchers.IO) {
-        File(context.cacheDir, SHARE_DIR).apply { mkdirs() }.resolve(SHARE_FILE).also { file ->
+        val dir = File(context.cacheDir, SHARE_DIR).apply { mkdirs() }
+        // A new file per share: an app given yesterday's ticket keeps reading access to that file
+        // while it's open, so it must never become today's. Shares older than a day are cleared.
+        val now = System.currentTimeMillis()
+        dir.listFiles()?.filter { now - it.lastModified() > SHARE_KEEP_MS }?.forEach { it.delete() }
+        dir.resolve("mukhda-ticket-$now.png").also { file ->
             file.outputStream().use { image.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
     }
@@ -378,6 +437,11 @@ private suspend fun shareTicket(context: Context, image: Bitmap, text: String) {
 
 private val TICKET_WIDTH = 318.dp
 private const val TICKET_TILT = -1.4f
+/** How far the ticket swings up when pulled right across. */
+private const val MAX_SWING_DEGREES = 24f
+/** How much it's turned as it rises in. */
+private const val ARRIVAL_TURN_DEGREES = 10f
 private const val BARS = 26
 private const val SHARE_DIR = "shared"
-private const val SHARE_FILE = "mukhda-ticket.png"
+/** How long a shared ticket's file is kept for the app it was shared with. */
+private const val SHARE_KEEP_MS = 24 * 60 * 60 * 1000L

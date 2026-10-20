@@ -26,7 +26,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -72,6 +71,7 @@ import com.mukhda.app.ui.theme.MukhdaTheme
 import com.mukhda.app.ui.theme.drawBehindKeyed
 import com.mukhda.app.ui.theme.paper
 import com.mukhda.app.ui.theme.rememberAnimationsEnabled
+import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.Verdict
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -79,8 +79,10 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 
 @Composable
-fun GameRoot(viewModel: GameViewModel = hiltViewModel()) {
+fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val loading = state.isLoading
+    LaunchedEffect(loading) { if (!loading) onShowReady() }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -154,8 +156,10 @@ fun GameScreen(
             val round = state.round
             when {
                 state.loadError != null -> LoadError(state.loadError, onRetry = { onAction(GameAction.OnRetryClick) })
-                state.isLoading || round == null -> Loading()
                 else -> {
+                    // Until the show arrives, the same layout with an untouched round: the curtain
+                    // closed, nothing playable, Skip and Guess unavailable.
+                    val round = round ?: LoadingRound
                     TierTabs(
                         selected = state.selectedTier,
                         finished = state.rounds.filterValues { !it.isOpen }.keys,
@@ -415,12 +419,13 @@ private fun RoundOver(won: Boolean, modifier: Modifier = Modifier) {
     )
 }
 
-@Composable
-private fun Loading() {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        CircularProgressIndicator(color = MukhdaTheme.colors.red)
-    }
-}
+/** The round shown while the first show loads: the first clip, five empty tries. */
+private val LoadingRound = RoundUi(
+    currentStep = 0,
+    slots = (1..ClipLadder.STEP_COUNT).map { TrySlotUi.Empty(it) },
+    isOpen = true,
+    isWon = false,
+)
 
 @Composable
 private fun LoadError(message: UiText, onRetry: () -> Unit) {

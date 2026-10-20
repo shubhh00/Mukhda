@@ -3,6 +3,7 @@
 
     <!-- The wordmark in the header and on the ticket, in Hindi like the app icon. -->
     <string name="wordmark" translatable="false">मुखड़ा</string>
+    <string name="launch_tagline">Five songs · A new show every day</string>
 
     <string name="tier_easy">Easy</string>
     <string name="tier_medium">Medium</string>

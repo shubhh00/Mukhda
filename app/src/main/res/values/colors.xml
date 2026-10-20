@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="paper">#FFF3E3C3</color>
+    <!-- The launch curtain's velvet (MukhdaColors.velvetDark). -->
+    <color name="velvet">#FF5A0C10</color>
 </resources>
