@@ -64,5 +64,5 @@ data class MukhdaColors(
     // Try squares on the shared ticket.
     val ticketWrong: Color = Color(0xFFC8261E),
     val ticketRightFilm: Color = Color(0xFFE09A12),
-    val ticketCorrect: Color = Color(0xFF1F7C80),
+    val ticketCorrect: Color = Color(0xFF2E8B4F),
 )
