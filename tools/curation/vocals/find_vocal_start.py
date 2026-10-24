@@ -1,0 +1,178 @@
+"""
+Finds where the singing starts in each song's iTunes preview, so a clip can start just before it.
+
+Reads a JSON list of {"songId", "previewUrl"} and adds {"vocalStartMs", "clipStartMs",
+"durationMs"} per song to the results file (vocalStartMs is null when the preview has no singing).
+Songs already in the results are skipped, so a run can be stopped and picked up again.
+
+The clip starts LEAD_MS before the singing, so the shortest clip is music and the voice comes in
+during the next one; a preview that opens mid-line keeps its start at 0. A clip never starts in
+silence: if the music stops just before the voice, the clip starts where the silence ends.
+
+The vocals are separated from the music with Demucs (htdemucs). Singing "starts" at the first
+stretch of at least MIN_RUN_MS where the vocal track is within BELOW_PEAK_DB of the singer's own
+loud level in the song: a soft entry under loud music counts, while the faint bleed separation
+leaves in instrumental parts (30-50 dB under the voice) doesn't.
+
+    .venv/Scripts/python vocals/find_vocal_start.py songs.json data/vocals/vocals.json
+"""
+
+import json
+import sys
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+import av
+import numpy as np
+import torch
+from demucs.apply import apply_model
+from demucs.pretrained import get_model
+
+SAMPLE_RATE = 44_100
+FRAME_MS = 50
+HOP_MS = 25
+# Singing: within this much of the singer's loud level (the 95th percentile of the voice), above
+# an absolute floor, and not buried far under the whole mix.
+BELOW_PEAK_DB = 15.0
+MIN_VOCAL_DB = -45.0
+MAX_BELOW_MIX_DB = 25.0
+# Singing, not a breath or a stray "hey": this long, allowing short gaps between words.
+MIN_RUN_MS = 400
+MAX_GAP_MS = 150
+# The clip starts this long before the singing: the 0.5 s clip is music, the 1 s clip reaches the voice.
+LEAD_MS = 600
+# Quieter than this (whole mix, dBFS) is silence, and a clip doesn't start in it.
+SILENCE_DB = -40.0
+# The full clip always gets at least this long: a clip never starts later in the preview.
+MIN_FULL_CLIP_MS = 10_000
+# Bumped when the rules change, so the next run checks every song again.
+RULES = 2
+
+
+def decode(path: Path) -> np.ndarray:
+    """The preview as float32 stereo at 44.1 kHz, shape (2, samples)."""
+    with av.open(str(path)) as container:
+        resampler = av.AudioResampler(format="fltp", layout="stereo", rate=SAMPLE_RATE)
+        chunks = []
+        for frame in container.decode(audio=0):
+            for out in resampler.resample(frame):
+                chunks.append(out.to_ndarray())
+        for out in resampler.resample(None):
+            chunks.append(out.to_ndarray())
+    return np.concatenate(chunks, axis=1).astype(np.float32)
+
+
+def frame_db(mono: np.ndarray) -> np.ndarray:
+    """Loudness per frame in dBFS."""
+    frame = SAMPLE_RATE * FRAME_MS // 1000
+    hop = SAMPLE_RATE * HOP_MS // 1000
+    count = max(1, 1 + (len(mono) - frame) // hop)
+    rms = np.array([np.sqrt(np.mean(mono[i * hop : i * hop + frame] ** 2) + 1e-12) for i in range(count)])
+    return 20 * np.log10(rms)
+
+
+def vocal_start_ms(vocals: np.ndarray, mix: np.ndarray) -> int | None:
+    voice = frame_db(vocals.mean(axis=0))
+    whole = frame_db(mix.mean(axis=0))
+    audible = voice[voice > -60]
+    if len(audible) == 0:
+        return None
+    peak = float(np.percentile(audible, 95))
+    singing = (voice > max(MIN_VOCAL_DB, peak - BELOW_PEAK_DB)) & (voice > whole - MAX_BELOW_MIX_DB)
+    need = MIN_RUN_MS // HOP_MS
+    gap_allowed = MAX_GAP_MS // HOP_MS
+    start, run, gap = None, 0, 0
+    for i, on in enumerate(singing):
+        if on:
+            if start is None:
+                start = i
+            run += 1 + gap
+            gap = 0
+            if run >= need:
+                return start * HOP_MS
+        elif start is not None:
+            gap += 1
+            if gap > gap_allowed:
+                start, run, gap = None, 0, 0
+    return None
+
+
+def clip_start_ms(vocal_start: int | None, mix: np.ndarray) -> int:
+    """Where the clip starts: LEAD_MS before the singing, never in silence, never too near the end."""
+    if vocal_start is None:
+        return 0
+    latest = max(0, mix.shape[1] * 1000 // SAMPLE_RATE - MIN_FULL_CLIP_MS)
+    vocal_start = min(vocal_start, latest + LEAD_MS)
+    start = max(0, vocal_start - LEAD_MS)
+    whole = frame_db(mix.mean(axis=0))
+    first, last = start // HOP_MS, vocal_start // HOP_MS
+    silent = [i for i in range(first, min(last, len(whole))) if whole[i] < SILENCE_DB]
+    # Start just after the last silent frame before the voice.
+    return (silent[-1] * HOP_MS + FRAME_MS) if silent else start
+
+
+def separate(model, wav: np.ndarray, device: str) -> np.ndarray:
+    """The vocal stem, shape (2, samples)."""
+    mix = torch.from_numpy(wav)
+    ref = mix.mean(0)
+    mean, std = ref.mean(), ref.std() + 1e-8
+    sources = apply_model(model, ((mix - mean) / std)[None].to(device), device=device, split=True, overlap=0.25, progress=False)[0]
+    sources = sources * std + mean
+    return sources[model.sources.index("vocals")].cpu().numpy()
+
+
+DOWNLOAD_THREADS = 4
+
+
+def download(song: dict, previews: Path) -> Path:
+    """The song's preview on disk, fetched once."""
+    path = previews / f"{song['songId']}.m4a"
+    if not path.exists():
+        with urllib.request.urlopen(song["previewUrl"], timeout=30) as response:
+            data = response.read()
+        path.write_bytes(data)
+    return path
+
+
+def main() -> None:
+    songs = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    out_path = Path(sys.argv[2])
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    results = json.loads(out_path.read_text(encoding="utf-8")) if out_path.exists() else {}
+    previews = out_path.parent / "previews"
+    previews.mkdir(exist_ok=True)
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = get_model("htdemucs")
+    model.to(device).eval()
+    todo = [s for s in songs if results.get(s["songId"], {}).get("rules") != RULES]
+    print(f"{len(todo)} to check on {device} ({len(songs) - len(todo)} already done)", flush=True)
+
+    # Downloads run ahead on their own threads, so the GPU isn't left waiting on the network.
+    pool = ThreadPoolExecutor(max_workers=DOWNLOAD_THREADS)
+    downloads = [pool.submit(download, song, previews) for song in todo]
+    for n, (song, fetched) in enumerate(zip(todo, downloads), 1):
+        song_id = song["songId"]
+        try:
+            wav = decode(fetched.result())
+            with torch.no_grad():
+                vocals = separate(model, wav, device)
+            vocal_start = vocal_start_ms(vocals, wav)
+            results[song_id] = {
+                "vocalStartMs": vocal_start,
+                "clipStartMs": min(clip_start_ms(vocal_start, wav), vocal_start or 0),
+                "durationMs": wav.shape[1] * 1000 // SAMPLE_RATE,
+                "rules": RULES,
+            }
+        except Exception as error:  # One bad preview mustn't stop the run; it's retried next time.
+            print(f"{song_id}: {error}", flush=True)
+            continue
+        if n % 10 == 0 or n == len(todo):
+            out_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
+            print(f"{n}/{len(todo)}", flush=True)
+    out_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { editDistance, joined, normalize } from "../src/normalize.ts";
 
@@ -33,4 +34,16 @@ test("edit distance", () => {
   assert.equal(editDistance("abc", "abd"), 1);
   assert.equal(editDistance("abc", "ab"), 1);
   assert.equal(editDistance("", "abc"), 3);
+});
+
+// The same cases SearchNormalizerTest checks in the app: this tool builds the app's search
+// database, so the two must normalise alike.
+test("agrees with the app's SearchNormalizer on the shared cases", () => {
+  const file = new URL("../../../domain/src/test/resources/search-normalizer-cases.tsv", import.meta.url);
+  const cases = readFileSync(file, "utf8")
+    .split(/\r?\n/)
+    .filter((l) => l.trim() && !l.startsWith("#"))
+    .map((l) => l.split("\t"));
+  assert.equal(cases.length, 22);
+  for (const [input, expected] of cases) assert.equal(normalize(input!), expected);
 });

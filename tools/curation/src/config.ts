@@ -20,6 +20,8 @@ export const paths = {
   /** Each pool song's seeded tier, and the sheet of tiers to review. */
   tiers: path.join(DATA_DIR, "tiers"),
   reports: path.join(DATA_DIR, "reports"),
+  /** Where the singing starts in each answer song's preview, from vocals/find_vocal_start.py. */
+  vocals: path.join(DATA_DIR, "vocals"),
   /** The built search index (also copied into the app's assets). */
   index: path.join(DATA_DIR, "index"),
   /** Prompts for, and chat answers about, songs the iTunes check couldn't confirm. */
