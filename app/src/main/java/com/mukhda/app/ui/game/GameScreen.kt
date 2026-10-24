@@ -161,6 +161,7 @@ fun GameScreen(
                 showNo = state.showNo,
                 dateLabel = state.dateLabel,
                 streak = state.streak,
+                hasPlayed = state.playedDays.isNotEmpty(),
                 onStreakClick = { onAction(GameAction.OnStreakClick) },
             )
             val round = state.round
@@ -179,7 +180,7 @@ fun GameScreen(
                     // box. With the keyboard up it fills this space and scrolls; with the keyboard down
                     // the record stays visible above it. A tap anywhere else closes it.
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter, playhead)
+                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter, playhead, state.showTopPercent)
                         if (state.isDropdownOpen) {
                             Box(
                                 Modifier
@@ -237,6 +238,7 @@ fun GameScreen(
                     solvedAtStep = round.solvedAtStep,
                     slots = round.slots,
                     streak = state.streak,
+                    topPercent = round.reveal?.topPercent?.takeIf { state.showTopPercent },
                 ),
                 round = round,
                 onAction = onAction,
@@ -306,6 +308,7 @@ private fun RoundContent(
     onAction: (GameAction) -> Unit,
     onStageCenter: (Offset) -> Unit,
     playhead: () -> ClipProgress?,
+    showTopPercent: Boolean,
 ) {
     val onPlayClick = { onAction(GameAction.OnPlayClick) }
     val reveal = round.reveal
@@ -338,7 +341,7 @@ private fun RoundContent(
                         .onGloballyPositioned { onStageCenter(it.boundsInRoot().center) },
                 )
             }
-            if (reveal != null) RevealDetails(round, reveal, isPlaying, onAction) else RoundDetails(tier, round, playhead)
+            if (reveal != null) RevealDetails(round, reveal, isPlaying, onAction, showTopPercent) else RoundDetails(tier, round, playhead)
         }
     }
 }

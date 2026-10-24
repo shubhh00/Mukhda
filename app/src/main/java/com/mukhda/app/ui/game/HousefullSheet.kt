@@ -107,7 +107,7 @@ fun HousefullSheet(streak: Int, best: Int, playedDays: Set<LocalDate>, today: Lo
                     val firstShow = today.minusDays((showNo - 1).coerceAtLeast(0).toLong())
                     MonthCalendar(playedDays, today, firstShow, Modifier.padding(top = 14.dp))
                     Text(
-                        text = stringResource(R.string.housefull_hint).uppercase(),
+                        text = stringResource(if (streak > 0) R.string.housefull_hint else R.string.housefull_start).uppercase(),
                         style = MukhdaTheme.typography.caption,
                         color = colors.faint,
                         textAlign = TextAlign.Center,

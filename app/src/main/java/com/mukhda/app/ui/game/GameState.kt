@@ -22,6 +22,8 @@ data class GameState(
     val showDate: LocalDate? = null,
     /** The housefull calendar is open over the screen. */
     val isHousefullOpen: Boolean = false,
+    /** "Top X% today" on the result and the ticket: switched on from the server (Remote Config). */
+    val showTopPercent: Boolean = false,
     val selectedTier: Tier = Tier.EASY,
     val rounds: Map<Tier, RoundUi> = emptyMap(),
     val guessText: String = "",
@@ -79,6 +81,8 @@ data class RevealUi(
     val detail: String,
     val artworkUrl: String?,
     val appleMusicUrl: String?,
+    /** "Top X% today", for a win; null for a loss or before anyone else has finished. */
+    val topPercent: Int? = null,
 )
 
 sealed interface TrySlotUi {
@@ -124,6 +128,10 @@ sealed interface GameAction {
     data object OnShareTicketClick : GameAction
     /** Back, or the close button, on the ticket. */
     data object OnTicketClose : GameAction
+    /** The ticket went to the share sheet. */
+    data object OnTicketShared : GameAction
+    /** "Listen on Apple Music". */
+    data object OnAppleMusicClick : GameAction
     /** The "N days housefull" badge. */
     data object OnStreakClick : GameAction
     /** Back, the close button, or a tap outside the housefull calendar. */

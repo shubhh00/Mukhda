@@ -128,7 +128,14 @@ private fun DrawScope.drawMark(mark: Mark, color: Color) {
  * it, then how they did.
  */
 @Composable
-internal fun RevealDetails(round: RoundUi, reveal: RevealUi, isPlaying: Boolean, onAction: (GameAction) -> Unit) {
+internal fun RevealDetails(
+    round: RoundUi,
+    reveal: RevealUi,
+    isPlaying: Boolean,
+    onAction: (GameAction) -> Unit,
+    /** "Top X% today" under the stamp, once switched on. */
+    showTopPercent: Boolean = false,
+) {
     val colors = MukhdaTheme.colors
     val type = MukhdaTheme.typography
     val verdict = round.verdict ?: Verdict.DISASTER
@@ -159,7 +166,10 @@ internal fun RevealDetails(round: RoundUi, reveal: RevealUi, isPlaying: Boolean,
                 TextAction(
                     text = stringResource(R.string.listen_on_apple_music).uppercase() + " ↗",
                     color = colors.amberInk,
-                    onClick = { uriHandler.openUri(url) },
+                    onClick = {
+                        onAction(GameAction.OnAppleMusicClick)
+                        uriHandler.openUri(url)
+                    },
                 )
             }
         }
@@ -176,7 +186,17 @@ internal fun RevealDetails(round: RoundUi, reveal: RevealUi, isPlaying: Boolean,
                 .padding(vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { VerdictStamp(verdict) }
+            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                VerdictStamp(verdict)
+                reveal.topPercent?.takeIf { showTopPercent }?.let { top ->
+                    Text(
+                        text = stringResource(R.string.top_percent, top).uppercase(),
+                        style = type.caption.copy(letterSpacing = type.label.letterSpacing),
+                        color = colors.red,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+            }
             Box(Modifier.fillMaxHeight().width(1.dp).background(colors.rule))
             Column(
                 modifier = Modifier.weight(1f),

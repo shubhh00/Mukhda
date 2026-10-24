@@ -28,3 +28,5 @@ rootProject.name = "Mukhda"
 include(":app")
 include(":domain")
 include(":data")
+// Test-only: generates the app's Baseline Profile and measures startup. Not part of the app.
+include(":baselineprofile")

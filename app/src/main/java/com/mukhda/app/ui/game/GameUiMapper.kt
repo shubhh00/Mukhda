@@ -52,13 +52,15 @@ fun RoundState.toRoundUi(songs: Map<String, SearchSong>): RoundUi {
         verdict = verdict,
         solvedAtStep = solvedAtStep,
         // Only a finished round can carry one; the check keeps an open round from ever showing it.
-        reveal = reveal?.takeIf { status.isFinished }?.toRevealUi(),
+        reveal = reveal?.takeIf { status.isFinished }?.toRevealUi(won = status == RoundStatus.WON),
     )
 }
 
-fun SongReveal.toRevealUi(): RevealUi = RevealUi(
+fun SongReveal.toRevealUi(won: Boolean = true): RevealUi = RevealUi(
     title = title,
     detail = "$filmTitle · $year",
     artworkUrl = artworkUrl,
     appleMusicUrl = appleMusicUrl,
+    // A loss is "Top 100%" by the server's count: not worth showing.
+    topPercent = topPercent?.takeIf { won },
 )

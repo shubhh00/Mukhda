@@ -28,7 +28,15 @@ import com.mukhda.app.ui.theme.MukhdaTheme
 
 /** Wordmark, show line and streak. */
 @Composable
-fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, onStreakClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ShowHeader(
+    showNo: Int,
+    dateLabel: String,
+    streak: Int,
+    /** Any try on any day: a player who has never played sees "FIRST SHOW" rather than "0 DAYS". */
+    hasPlayed: Boolean,
+    onStreakClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = MukhdaTheme.colors
     val type = MukhdaTheme.typography
     Column(
@@ -43,7 +51,8 @@ fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, onStreakClick: () ->
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(stringResource(R.string.wordmark), style = type.brand, color = colors.red)
-            if (streak > 0) StreakBadge(streak, onClick = onStreakClick)
+            // Once the show is in: a new player gets "FIRST SHOW", so the corner isn't empty.
+            if (showNo > 0) StreakBadge(streak, hasPlayed, onClick = onStreakClick)
         }
         Text(
             text = if (showNo > 0) stringResource(R.string.show_line, showNo, dateLabel) else "",
@@ -54,9 +63,12 @@ fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, onStreakClick: () ->
     }
 }
 
-/** "12 DAYS HOUSEFULL" in marigold on the buttons' red, with a ticket stub. Opens the calendar. */
+/**
+ * "12 DAYS HOUSEFULL" in marigold on the buttons' red, with a ticket stub; "FIRST SHOW" before a
+ * player's first try. Opens the calendar.
+ */
 @Composable
-private fun StreakBadge(streak: Int, onClick: () -> Unit) {
+private fun StreakBadge(streak: Int, hasPlayed: Boolean, onClick: () -> Unit) {
     val colors = MukhdaTheme.colors
     val openLabel = stringResource(R.string.cd_open_housefull)
     Row(
@@ -68,7 +80,8 @@ private fun StreakBadge(streak: Int, onClick: () -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         TicketIcon()
-        Text(pluralStringResource(R.plurals.days_housefull, streak, streak).uppercase(), style = MukhdaTheme.typography.label, color = colors.marigold)
+        val label = if (hasPlayed) pluralStringResource(R.plurals.days_housefull, streak, streak) else stringResource(R.string.first_show)
+        Text(label.uppercase(), style = MukhdaTheme.typography.label, color = colors.marigold)
     }
 }
 

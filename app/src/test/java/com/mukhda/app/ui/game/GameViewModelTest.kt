@@ -22,6 +22,7 @@ import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
+import com.mukhda.domain.telemetry.TelemetryEvent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -57,7 +58,11 @@ class GameViewModelTest {
 
     private val history = FakeRoundHistory()
 
-    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex, player, history)
+    private val telemetry = FakeTelemetry()
+    private val flags = FakeFeatureFlags()
+
+    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) =
+        GameViewModel(handle, show, songIndex, player, history, telemetry, flags)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -498,6 +503,43 @@ class GameViewModelTest {
         assertThat(vm.state.value.isTicketOpen).isTrue()
         vm.onAction(GameAction.OnTicketClose)
         assertThat(vm.state.value.isTicketOpen).isFalse()
+    }
+
+    @Test
+    fun `telemetry hears about clips, finished rounds, the ticket and the calendar, never a song`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnPlayClick)
+        vm.onAction(GameAction.OnPlayClick)
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnShareTicketClick)
+        vm.onAction(GameAction.OnTicketShared)
+        vm.onAction(GameAction.OnStreakClick)
+
+        val tier = vm.state.value.selectedTier
+        val verdict = vm.state.value.round!!.verdict!!
+        assertThat(telemetry.events).containsExactly(
+            TelemetryEvent.ClipPlayed(tier, 0),
+            TelemetryEvent.RoundFinished(tier, verdict),
+            TelemetryEvent.TicketOpened(tier, verdict),
+            TelemetryEvent.TicketShared(tier, verdict),
+            TelemetryEvent.HousefullOpened(vm.state.value.streak),
+        )
+        assertThat(telemetry.context["show_date"]).isEqualTo(show.date.toString())
+    }
+
+    @Test
+    fun `a show that won't load is reported as a handled error`() = runTest(dispatcher) {
+        show.loadError = DataError.Network.NO_INTERNET
+        viewModel()
+        assertThat(telemetry.errors).containsExactly("load_show" to DataError.Network.NO_INTERNET)
+    }
+
+    @Test
+    fun `top percent follows the switch from the server`() = runTest(dispatcher) {
+        val vm = viewModel()
+        assertThat(vm.state.value.showTopPercent).isFalse()
+        flags.showTopPercent.value = true
+        assertThat(vm.state.value.showTopPercent).isTrue()
     }
 
     @Test

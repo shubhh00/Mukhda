@@ -8,14 +8,19 @@ import com.mukhda.data.round.RoomRoundHistory
 import com.mukhda.data.round.RoundDao
 import com.mukhda.data.round.TryDao
 import com.mukhda.data.search.BundledSearchIndexAsset
+import com.mukhda.data.search.BundledSearchIndexStore
 import com.mukhda.data.search.RoomSongIndexDataSource
 import com.mukhda.data.search.SearchIndexAsset
-import com.mukhda.data.search.SearchIndexDao
+import com.mukhda.data.search.SearchIndexStore
 import com.mukhda.data.show.FirebaseShowRepository
+import com.mukhda.data.telemetry.FirebaseTelemetry
+import com.mukhda.data.telemetry.RemoteConfigFeatureFlags
 import com.mukhda.domain.audio.ClipPlayer
 import com.mukhda.domain.round.RoundHistory
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.show.ShowRepository
+import com.mukhda.domain.telemetry.FeatureFlags
+import com.mukhda.domain.telemetry.Telemetry
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -38,16 +43,15 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun database(@ApplicationContext context: Context): MukhdaDatabase =
-        Room.databaseBuilder(context, MukhdaDatabase::class.java, MukhdaDatabase.NAME).build()
+        Room.databaseBuilder(context, MukhdaDatabase::class.java, MukhdaDatabase.NAME)
+            .addMigrations(MukhdaDatabase.MIGRATION_1_2)
+            .build()
 
     @Provides
     fun roundDao(db: MukhdaDatabase): RoundDao = db.roundDao()
 
     @Provides
     fun tryDao(db: MukhdaDatabase): TryDao = db.tryDao()
-
-    @Provides
-    fun searchIndexDao(db: MukhdaDatabase): SearchIndexDao = db.searchIndexDao()
 
     @Provides
     @IoDispatcher
@@ -68,8 +72,17 @@ abstract class DataBindings {
     abstract fun searchIndexAsset(asset: BundledSearchIndexAsset): SearchIndexAsset
 
     @Binds
+    abstract fun searchIndexStore(store: BundledSearchIndexStore): SearchIndexStore
+
+    @Binds
     abstract fun showRepository(repository: FirebaseShowRepository): ShowRepository
 
     @Binds
     abstract fun roundHistory(history: RoomRoundHistory): RoundHistory
+
+    @Binds
+    abstract fun telemetry(telemetry: FirebaseTelemetry): Telemetry
+
+    @Binds
+    abstract fun featureFlags(flags: RemoteConfigFeatureFlags): FeatureFlags
 }

@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.ReportDrawnWhen
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,9 @@ class MainActivity : ComponentActivity() {
                 var curtainUp by remember { mutableStateOf(freshStart) }
                 var showReady by remember { mutableStateOf(false) }
                 LaunchedEffect(curtainUp) { styleSystemBars(onCurtain = curtainUp) }
+                // "Fully drawn" once the show is in and the curtain is up: the startup benchmark's
+                // time to full display, and Android's own startup reporting.
+                ReportDrawnWhen { showReady && !curtainUp }
                 Box {
                     val navController = rememberNavController()
                     NavHost(navController = navController, startDestination = GameRoute) {
