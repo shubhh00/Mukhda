@@ -9,6 +9,7 @@ import com.mukhda.app.ui.common.toUiText
 import com.mukhda.domain.GameError
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.RoundStatus
 import com.mukhda.domain.model.Tier
@@ -36,6 +37,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -60,6 +62,13 @@ class GameViewModel @Inject constructor(
     private val songs = mutableMapOf<String, SearchSong>()
     private var searchJob: Job? = null
     private var playJob: Job? = null
+
+    private val _playhead = MutableStateFlow<ClipProgress?>(null)
+    /**
+     * How far the playing clip has got, many times a second. Kept out of [state] so a playing clip
+     * redraws only the clip bar, not the whole screen.
+     */
+    val playhead = _playhead.asStateFlow()
 
     /** Days the player made a try on, from the rounds kept on the phone, for the streak. */
     private var playedDays: Set<LocalDate> = emptySet()
@@ -100,6 +109,8 @@ class GameViewModel @Inject constructor(
             GameAction.OnNextTierClick -> _state.value.nextTier?.let { selectTier(GameAction.OnTierClick(it)) }
             GameAction.OnShareTicketClick -> _state.update { it.copy(isTicketOpen = true) }
             GameAction.OnTicketClose -> _state.update { it.copy(isTicketOpen = false) }
+            GameAction.OnStreakClick -> _state.update { it.copy(isHousefullOpen = true) }
+            GameAction.OnHousefullClose -> _state.update { it.copy(isHousefullOpen = false) }
         }
     }
 
@@ -129,6 +140,9 @@ class GameViewModel @Inject constructor(
     private suspend fun showLoaded(loaded: Show) {
         val before = show?.rounds
         show = loaded
+        // The show's rounds were saved on the phone as it loaded: read them now, so the streak
+        // reaches the screen with the show rather than a moment after it.
+        playedDays = Streak.playedDates(roundHistory.dayRounds().first())
         val wasSending = sending.keys.toSet()
         sending.clear()
         rememberGuessedSongs(loaded)
@@ -156,6 +170,9 @@ class GameViewModel @Inject constructor(
                 dateLabel = show.date.toDateLabel(),
                 endsAtEpochMs = show.endsAt.toEpochMilli(),
                 streak = Streak.current(playedDays, show.date),
+                bestStreak = Streak.best(playedDays),
+                playedDays = playedDays,
+                showDate = show.date,
                 rounds = show.rounds.mapValues { (tier, round) ->
                     val ui = round.toRoundUi(songs)
                     if (tier in sending) ui.withSending(sending[tier]?.let(songs::get)) else ui
@@ -168,7 +185,9 @@ class GameViewModel @Inject constructor(
     /** Counted up to the server's show date, never the phone's: today without a try doesn't break it. */
     private fun publishStreak() {
         val today = show?.date ?: return
-        _state.update { it.copy(streak = Streak.current(playedDays, today)) }
+        _state.update {
+            it.copy(streak = Streak.current(playedDays, today), bestStreak = Streak.best(playedDays), playedDays = playedDays)
+        }
     }
 
     private fun selectTier(action: GameAction.OnTierClick) {
@@ -335,9 +354,17 @@ class GameViewModel @Inject constructor(
         }
         _state.update { it.copy(isPlaying = true) }
         playJob = viewModelScope.launch {
+            val ticker = launch {
+                while (true) {
+                    _playhead.value = clipPlayer.progress()
+                    delay(PLAYHEAD_TICK_MS)
+                }
+            }
             // Once the round is over, the player knows the song: play all of it.
             clipPlayer.play(preview, if (round.isOpen) ClipLadder.clipLengthMs(round.currentStep) else null)
                 .onFailure { _events.send(GameEvent.ShowMessage(it.toUiText())) }
+            ticker.cancel()
+            _playhead.value = null
             _state.update { it.copy(isPlaying = false) }
         }
     }
@@ -355,6 +382,7 @@ class GameViewModel @Inject constructor(
 
     private fun stopPlaying() {
         playJob?.cancel()
+        _playhead.value = null
         _state.update { it.copy(isPlaying = false) }
     }
 
@@ -364,6 +392,8 @@ class GameViewModel @Inject constructor(
 
     private companion object {
         const val KEY_GUESS_TEXT = "guessText"
+        /** About one frame: the playhead moves smoothly. */
+        const val PLAYHEAD_TICK_MS = 16L
         const val SEARCH_DEBOUNCE_MS = 150L
         const val RESEND_FIRST_MS = 3_000L
         const val RESEND_MAX_MS = 30_000L

@@ -203,8 +203,7 @@ private fun SwingingTicket(animationsEnabled: Boolean, content: @Composable () -
 }
 
 @Composable
-private fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val color = MukhdaTheme.colors.ink
+internal fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = MukhdaTheme.colors.ink) {
     val label = stringResource(R.string.cd_close)
     Box(
         modifier = modifier

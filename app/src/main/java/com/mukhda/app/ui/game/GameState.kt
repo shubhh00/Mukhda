@@ -4,6 +4,7 @@ import androidx.compose.runtime.Stable
 import com.mukhda.app.ui.common.UiText
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.Verdict
+import java.time.LocalDate
 
 @Stable
 data class GameState(
@@ -13,6 +14,14 @@ data class GameState(
     /** "MON 13 OCT", from the server's show date. */
     val dateLabel: String = "",
     val streak: Int = 0,
+    /** The longest housefull run so far. */
+    val bestStreak: Int = 0,
+    /** Show days with at least one try, from the rounds kept on the phone, for the calendar. */
+    val playedDays: Set<LocalDate> = emptySet(),
+    /** Today's show date, from the server. */
+    val showDate: LocalDate? = null,
+    /** The housefull calendar is open over the screen. */
+    val isHousefullOpen: Boolean = false,
     val selectedTier: Tier = Tier.EASY,
     val rounds: Map<Tier, RoundUi> = emptyMap(),
     val guessText: String = "",
@@ -115,6 +124,10 @@ sealed interface GameAction {
     data object OnShareTicketClick : GameAction
     /** Back, or the close button, on the ticket. */
     data object OnTicketClose : GameAction
+    /** The "N days housefull" badge. */
+    data object OnStreakClick : GameAction
+    /** Back, the close button, or a tap outside the housefull calendar. */
+    data object OnHousefullClose : GameAction
 }
 
 sealed interface GameEvent {

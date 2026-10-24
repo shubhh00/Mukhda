@@ -2,6 +2,7 @@ package com.mukhda.app.ui.game
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,13 +20,15 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaTheme
 
 /** Wordmark, show line and streak. */
 @Composable
-fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, modifier: Modifier = Modifier) {
+fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, onStreakClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MukhdaTheme.colors
     val type = MukhdaTheme.typography
     Column(
@@ -40,7 +43,7 @@ fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, modifier: Modifier =
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Text(stringResource(R.string.wordmark), style = type.brand, color = colors.red)
-            if (streak > 0) StreakBadge(streak)
+            if (streak > 0) StreakBadge(streak, onClick = onStreakClick)
         }
         Text(
             text = if (showNo > 0) stringResource(R.string.show_line, showNo, dateLabel) else "",
@@ -51,13 +54,15 @@ fun ShowHeader(showNo: Int, dateLabel: String, streak: Int, modifier: Modifier =
     }
 }
 
-/** "12 DAYS HOUSEFULL" in marigold on the buttons' red, with a ticket stub. */
+/** "12 DAYS HOUSEFULL" in marigold on the buttons' red, with a ticket stub. Opens the calendar. */
 @Composable
-private fun StreakBadge(streak: Int) {
+private fun StreakBadge(streak: Int, onClick: () -> Unit) {
     val colors = MukhdaTheme.colors
+    val openLabel = stringResource(R.string.cd_open_housefull)
     Row(
         modifier = Modifier
             .background(colors.buttonRed)
+            .clickable(onClickLabel = openLabel, role = Role.Button, onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 5.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -69,9 +74,9 @@ private fun StreakBadge(streak: Int) {
 
 /** A ticket outline with a dashed tear line. */
 @Composable
-private fun TicketIcon() {
+internal fun TicketIcon(iconSize: Dp = 14.dp) {
     val color = MukhdaTheme.colors.marigold
-    Canvas(Modifier.size(14.dp)) {
+    Canvas(Modifier.size(iconSize)) {
         val s = size.width / 24f
         drawRect(color, topLeft = Offset(3 * s, 5 * s), size = Size(18 * s, 12 * s), style = Stroke(width = 1.6f * s))
         drawLine(

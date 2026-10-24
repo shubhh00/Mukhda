@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.containsExactly
+import assertk.assertions.containsExactlyInAnyOrder
 import assertk.assertions.hasSize
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
@@ -380,6 +381,29 @@ class GameViewModelTest {
         // A confirmed try today, saved on the phone, extends it at once.
         history.rounds.value = history.rounds.value + Streak.DayRound(today, triesUsed = 1)
         assertThat(vm.state.value.streak).isEqualTo(3)
+    }
+
+    @Test
+    fun `the housefull calendar opens with the played days, the best run and today's show date`() = runTest(dispatcher) {
+        val today = show.date
+        history.rounds.value = listOf(
+            Streak.DayRound(today.minusDays(1), triesUsed = 2),
+            // An older run of three, longer than the current one.
+            Streak.DayRound(today.minusDays(5), triesUsed = 1),
+            Streak.DayRound(today.minusDays(6), triesUsed = 1),
+            Streak.DayRound(today.minusDays(7), triesUsed = 3),
+        )
+        val vm = viewModel()
+        vm.onAction(GameAction.OnStreakClick)
+        with(vm.state.value) {
+            assertThat(isHousefullOpen).isTrue()
+            assertThat(streak).isEqualTo(1)
+            assertThat(bestStreak).isEqualTo(3)
+            assertThat(playedDays).containsExactlyInAnyOrder(today.minusDays(1), today.minusDays(5), today.minusDays(6), today.minusDays(7))
+            assertThat(showDate).isEqualTo(today)
+        }
+        vm.onAction(GameAction.OnHousefullClose)
+        assertThat(vm.state.value.isHousefullOpen).isFalse()
     }
 
     @Test
