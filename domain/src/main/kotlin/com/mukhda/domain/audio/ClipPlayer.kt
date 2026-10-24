@@ -13,6 +13,13 @@ data class Preview(
     val startOffsetMs: Long = 0,
 )
 
+/** How far the clip that's playing has got. */
+data class ClipProgress(
+    val playedMs: Long,
+    /** The clip's length; null until the player knows it (a clip that plays to the end). */
+    val lengthMs: Long?,
+)
+
 /**
  * Plays exact windows of previews. Clips never stream: [cache] downloads whole previews first, so
  * a half-second clip can't stall halfway.
@@ -37,6 +44,12 @@ interface ClipPlayer {
      * within a couple of seconds then starts at once. Doesn't take audio focus.
      */
     suspend fun wakeSpeaker()
+
+    /**
+     * How far the clip [play] is playing has got, or null when nothing is playing. Cheap enough to
+     * ask every frame. Main thread.
+     */
+    fun progress(): ClipProgress?
 
     /** True when media volume is low enough that a half-second clip could go unheard. */
     fun isVolumeLow(): Boolean

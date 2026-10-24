@@ -9,11 +9,13 @@ import com.mukhda.app.ui.common.toUiText
 import com.mukhda.domain.GameError
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.RoundStatus
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
+import com.mukhda.domain.model.Verdict
 import com.mukhda.domain.onFailure
 import com.mukhda.domain.onSuccess
 import com.mukhda.domain.round.RoundHistory
@@ -27,6 +29,9 @@ import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
 import com.mukhda.domain.show.TryError
 import com.mukhda.domain.show.isTransient
+import com.mukhda.domain.telemetry.FeatureFlags
+import com.mukhda.domain.telemetry.Telemetry
+import com.mukhda.domain.telemetry.TelemetryEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.LocalDate
 import java.util.UUID
@@ -36,6 +41,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -47,6 +53,8 @@ class GameViewModel @Inject constructor(
     private val songIndex: SongIndexDataSource,
     private val clipPlayer: ClipPlayer,
     private val roundHistory: RoundHistory,
+    private val telemetry: Telemetry,
+    private val featureFlags: FeatureFlags,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GameState(guessText = savedStateHandle[KEY_GUESS_TEXT] ?: ""))
@@ -60,6 +68,13 @@ class GameViewModel @Inject constructor(
     private val songs = mutableMapOf<String, SearchSong>()
     private var searchJob: Job? = null
     private var playJob: Job? = null
+
+    private val _playhead = MutableStateFlow<ClipProgress?>(null)
+    /**
+     * How far the playing clip has got, many times a second. Kept out of [state] so a playing clip
+     * redraws only the clip bar, not the whole screen.
+     */
+    val playhead = _playhead.asStateFlow()
 
     /** Days the player made a try on, from the rounds kept on the phone, for the streak. */
     private var playedDays: Set<LocalDate> = emptySet()
@@ -78,6 +93,9 @@ class GameViewModel @Inject constructor(
                 playedDays = Streak.playedDates(rounds)
                 publishStreak()
             }
+        }
+        viewModelScope.launch {
+            featureFlags.showTopPercent.collect { on -> _state.update { it.copy(showTopPercent = on) } }
         }
         loadShow()
     }
@@ -98,8 +116,18 @@ class GameViewModel @Inject constructor(
             GameAction.OnGuessFieldFocus -> _state.update { it.copy(suggestionsDismissed = false) }
             GameAction.OnDismissSuggestions -> _state.update { it.copy(suggestionsDismissed = true) }
             GameAction.OnNextTierClick -> _state.value.nextTier?.let { selectTier(GameAction.OnTierClick(it)) }
-            GameAction.OnShareTicketClick -> _state.update { it.copy(isTicketOpen = true) }
+            GameAction.OnShareTicketClick -> {
+                _state.update { it.copy(isTicketOpen = true) }
+                logVerdict(TelemetryEvent::TicketOpened)
+            }
+            GameAction.OnTicketShared -> logVerdict(TelemetryEvent::TicketShared)
+            GameAction.OnAppleMusicClick -> telemetry.log(TelemetryEvent.AppleMusicOpened(_state.value.selectedTier))
             GameAction.OnTicketClose -> _state.update { it.copy(isTicketOpen = false) }
+            GameAction.OnStreakClick -> {
+                _state.update { it.copy(isHousefullOpen = true) }
+                telemetry.log(TelemetryEvent.HousefullOpened(_state.value.streak))
+            }
+            GameAction.OnHousefullClose -> _state.update { it.copy(isHousefullOpen = false) }
         }
     }
 
@@ -117,7 +145,10 @@ class GameViewModel @Inject constructor(
                         clipPlayer.cache(loaded.previews.values)
                     }
                 }
-                .onFailure { error -> _state.update { it.copy(isLoading = false, loadError = error.toUiText()) } }
+                .onFailure { error ->
+                    telemetry.recordError("load_show", error)
+                    _state.update { it.copy(isLoading = false, loadError = error.toUiText()) }
+                }
         }
     }
 
@@ -129,6 +160,10 @@ class GameViewModel @Inject constructor(
     private suspend fun showLoaded(loaded: Show) {
         val before = show?.rounds
         show = loaded
+        telemetry.setContext("show_date", loaded.date.toString())
+        // The show's rounds were saved on the phone as it loaded: read them now, so the streak
+        // reaches the screen with the show rather than a moment after it.
+        playedDays = Streak.playedDates(roundHistory.dayRounds().first())
         val wasSending = sending.keys.toSet()
         sending.clear()
         rememberGuessedSongs(loaded)
@@ -156,6 +191,9 @@ class GameViewModel @Inject constructor(
                 dateLabel = show.date.toDateLabel(),
                 endsAtEpochMs = show.endsAt.toEpochMilli(),
                 streak = Streak.current(playedDays, show.date),
+                bestStreak = Streak.best(playedDays),
+                playedDays = playedDays,
+                showDate = show.date,
                 rounds = show.rounds.mapValues { (tier, round) ->
                     val ui = round.toRoundUi(songs)
                     if (tier in sending) ui.withSending(sending[tier]?.let(songs::get)) else ui
@@ -168,11 +206,14 @@ class GameViewModel @Inject constructor(
     /** Counted up to the server's show date, never the phone's: today without a try doesn't break it. */
     private fun publishStreak() {
         val today = show?.date ?: return
-        _state.update { it.copy(streak = Streak.current(playedDays, today)) }
+        _state.update {
+            it.copy(streak = Streak.current(playedDays, today), bestStreak = Streak.best(playedDays), playedDays = playedDays)
+        }
     }
 
     private fun selectTier(action: GameAction.OnTierClick) {
         stopPlaying()
+        telemetry.setContext("tier", action.tier.name)
         // Tapping a tab is a tap outside the list, so it closes it.
         _state.update { it.copy(selectedTier = action.tier, suggestionsDismissed = true) }
         // "Already guessed" depends on the tier's round.
@@ -260,6 +301,7 @@ class GameViewModel @Inject constructor(
                     sending.remove(tier)
                     showRound(tier, result.data)
                     if (result.data.status == RoundStatus.WON) result.data.verdict?.let { _events.send(GameEvent.Celebrate(it)) }
+                    if (result.data.status.isFinished) result.data.verdict?.let { telemetry.log(TelemetryEvent.RoundFinished(tier, it)) }
                     // A missed guess moves the ladder up a step: the next clip is longer. A skip
                     // already moved it, and got that clip ready, when it was shown.
                     if (type == TryType.GUESS) preloadCurrentClip()
@@ -273,6 +315,7 @@ class GameViewModel @Inject constructor(
                     _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.try_queued)))
                 } else {
                     // Refused: back to the round as it was, and the server has the last word.
+                    telemetry.recordError("submit_try", result.error)
                     sending.remove(tier)
                     showRound(tier, before)
                     handleTryError(result.error)
@@ -334,10 +377,22 @@ class GameViewModel @Inject constructor(
             viewModelScope.launch { _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.volume_low))) }
         }
         _state.update { it.copy(isPlaying = true) }
+        if (round.isOpen) telemetry.log(TelemetryEvent.ClipPlayed(tier, round.currentStep))
         playJob = viewModelScope.launch {
+            val ticker = launch {
+                while (true) {
+                    _playhead.value = clipPlayer.progress()
+                    delay(PLAYHEAD_TICK_MS)
+                }
+            }
             // Once the round is over, the player knows the song: play all of it.
             clipPlayer.play(preview, if (round.isOpen) ClipLadder.clipLengthMs(round.currentStep) else null)
-                .onFailure { _events.send(GameEvent.ShowMessage(it.toUiText())) }
+                .onFailure {
+                    telemetry.recordError("play_clip", it)
+                    _events.send(GameEvent.ShowMessage(it.toUiText()))
+                }
+            ticker.cancel()
+            _playhead.value = null
             _state.update { it.copy(isPlaying = false) }
         }
     }
@@ -353,8 +408,15 @@ class GameViewModel @Inject constructor(
         if (_state.value.round?.isOpen == true) viewModelScope.launch { clipPlayer.wakeSpeaker() }
     }
 
+    /** Logs [event] for the selected tier's finished round, with its verdict. */
+    private fun logVerdict(event: (Tier, Verdict) -> TelemetryEvent) {
+        val tier = _state.value.selectedTier
+        _state.value.round?.verdict?.let { telemetry.log(event(tier, it)) }
+    }
+
     private fun stopPlaying() {
         playJob?.cancel()
+        _playhead.value = null
         _state.update { it.copy(isPlaying = false) }
     }
 
@@ -364,6 +426,8 @@ class GameViewModel @Inject constructor(
 
     private companion object {
         const val KEY_GUESS_TEXT = "guessText"
+        /** About one frame: the playhead moves smoothly. */
+        const val PLAYHEAD_TICK_MS = 16L
         const val SEARCH_DEBOUNCE_MS = 150L
         const val RESEND_FIRST_MS = 3_000L
         const val RESEND_MAX_MS = 30_000L

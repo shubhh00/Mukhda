@@ -86,6 +86,8 @@ data class TicketUi(
     val solvedAtStep: Int?,
     val slots: List<TrySlotUi>,
     val streak: Int,
+    /** "Top X% today", once it's switched on; null otherwise. */
+    val topPercent: Int? = null,
 )
 
 /**
@@ -147,6 +149,7 @@ fun TicketOverlay(ticket: TicketUi, round: RoundUi, onAction: (GameAction) -> Un
                     scope.launch {
                         val image = layer.toImageBitmap().asAndroidBitmap()
                         shareTicket(context, image, shareText)
+                        onAction(GameAction.OnTicketShared)
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -203,8 +206,7 @@ private fun SwingingTicket(animationsEnabled: Boolean, content: @Composable () -
 }
 
 @Composable
-private fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val color = MukhdaTheme.colors.ink
+internal fun CloseButton(onClick: () -> Unit, modifier: Modifier = Modifier, color: Color = MukhdaTheme.colors.ink) {
     val label = stringResource(R.string.cd_close)
     Box(
         modifier = modifier
@@ -269,6 +271,14 @@ fun Ticket(ticket: TicketUi, modifier: Modifier = Modifier) {
                     textAlign = TextAlign.Center,
                 )
                 TrySquares(ticket.slots, size = 26.dp, gap = 6.dp, modifier = Modifier.padding(top = 16.dp))
+                ticket.topPercent?.let { top ->
+                    Text(
+                        text = stringResource(R.string.top_percent, top).uppercase(),
+                        style = type.label,
+                        color = colors.red,
+                        modifier = Modifier.padding(top = 14.dp),
+                    )
+                }
                 if (ticket.streak > 0) {
                     Text(
                         text = pluralStringResource(R.plurals.days_housefull, ticket.streak, ticket.streak).uppercase(),
@@ -413,6 +423,7 @@ private fun shareText(ticket: TicketUi, round: RoundUi): String {
         stringResource(shareClipRes(round)),
         squares,
         stringResource(R.string.play_store_url),
+        ticket.topPercent?.let { stringResource(R.string.share_top_percent, it) }.orEmpty(),
     )
 }
 

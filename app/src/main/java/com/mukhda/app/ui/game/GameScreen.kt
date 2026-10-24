@@ -72,6 +72,7 @@ import com.mukhda.app.ui.theme.drawBehindKeyed
 import com.mukhda.app.ui.theme.paper
 import com.mukhda.app.ui.theme.rememberAnimationsEnabled
 import com.mukhda.domain.model.ClipLadder
+import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.Verdict
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -81,6 +82,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val playhead = viewModel.playhead.collectAsStateWithLifecycle()
     val loading = state.isLoading
     LaunchedEffect(loading) { if (!loading) onShowReady() }
     val snackbar = remember { SnackbarHostState() }
@@ -118,6 +120,7 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit
             onAction = onAction,
             animationsEnabled = animationsEnabled,
             onStageCenter = { stageCenter.value = it },
+            playhead = { playhead.value },
         )
         PetalBurst(
             trigger = celebrations,
@@ -137,6 +140,8 @@ fun GameScreen(
     animationsEnabled: Boolean = true,
     /** Where the stage's middle is on screen, for the win's petal burst. */
     onStageCenter: (Offset) -> Unit = {},
+    /** How far the playing clip has got; read where it's drawn, so playing recomposes nothing. */
+    playhead: () -> ClipProgress? = { null },
 ) {
     val colors = MukhdaTheme.colors
     val hideKeyboard = rememberHideKeyboard()
@@ -152,7 +157,13 @@ fun GameScreen(
                 .paper(colors, dots = colors.red.copy(alpha = 0.10f))
                 .hideKeyboardOnTapAbove(hideKeyboard) { barHeight.intValue },
         ) {
-            ShowHeader(showNo = state.showNo, dateLabel = state.dateLabel, streak = state.streak)
+            ShowHeader(
+                showNo = state.showNo,
+                dateLabel = state.dateLabel,
+                streak = state.streak,
+                hasPlayed = state.playedDays.isNotEmpty(),
+                onStreakClick = { onAction(GameAction.OnStreakClick) },
+            )
             val round = state.round
             when {
                 state.loadError != null -> LoadError(state.loadError, onRetry = { onAction(GameAction.OnRetryClick) })
@@ -169,7 +180,7 @@ fun GameScreen(
                     // box. With the keyboard up it fills this space and scrolls; with the keyboard down
                     // the record stays visible above it. A tap anywhere else closes it.
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter)
+                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter, playhead, state.showTopPercent)
                         if (state.isDropdownOpen) {
                             Box(
                                 Modifier
@@ -227,9 +238,21 @@ fun GameScreen(
                     solvedAtStep = round.solvedAtStep,
                     slots = round.slots,
                     streak = state.streak,
+                    topPercent = round.reveal?.topPercent?.takeIf { state.showTopPercent },
                 ),
                 round = round,
                 onAction = onAction,
+            )
+        }
+        val showDate = state.showDate
+        if (state.isHousefullOpen && showDate != null) {
+            HousefullSheet(
+                streak = state.streak,
+                best = state.bestStreak,
+                playedDays = state.playedDays,
+                today = showDate,
+                showNo = state.showNo,
+                onClose = { onAction(GameAction.OnHousefullClose) },
             )
         }
     }
@@ -284,6 +307,8 @@ private fun RoundContent(
     animationsEnabled: Boolean,
     onAction: (GameAction) -> Unit,
     onStageCenter: (Offset) -> Unit,
+    playhead: () -> ClipProgress?,
+    showTopPercent: Boolean,
 ) {
     val onPlayClick = { onAction(GameAction.OnPlayClick) }
     val reveal = round.reveal
@@ -316,7 +341,7 @@ private fun RoundContent(
                         .onGloballyPositioned { onStageCenter(it.boundsInRoot().center) },
                 )
             }
-            if (reveal != null) RevealDetails(round, reveal, isPlaying, onAction) else RoundDetails(round)
+            if (reveal != null) RevealDetails(round, reveal, isPlaying, onAction, showTopPercent) else RoundDetails(tier, round, playhead)
         }
     }
 }
@@ -342,8 +367,8 @@ private fun marquee(round: RoundUi, isPlaying: Boolean): String = stringResource
 )
 
 @Composable
-private fun RoundDetails(round: RoundUi) {
-    ClipLadderStrip(currentStep = round.currentStep, modifier = Modifier.padding(top = 12.dp))
+private fun RoundDetails(tier: Tier, round: RoundUi, playhead: () -> ClipProgress?) {
+    ClipLadderStrip(tier = tier, currentStep = round.currentStep, playhead = playhead, modifier = Modifier.padding(top = 12.dp))
     if (!round.isOpen) RoundOver(won = round.isWon, modifier = Modifier.padding(top = 10.dp))
     TrySlots(slots = round.slots, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
 }

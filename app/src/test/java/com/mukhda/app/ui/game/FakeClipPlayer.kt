@@ -4,6 +4,7 @@ import com.mukhda.domain.DataError
 import com.mukhda.domain.EmptyOutcome
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.audio.Preview
 import kotlinx.coroutines.delay
 
@@ -38,6 +39,11 @@ class FakeClipPlayer : ClipPlayer {
     override suspend fun wakeSpeaker() {
         speakerWakes++
     }
+
+    /** What [progress] reports while a clip plays. */
+    var playing: ClipProgress? = null
+
+    override fun progress(): ClipProgress? = playing
 
     override fun isVolumeLow(): Boolean = volumeLow
 
