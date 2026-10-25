@@ -100,6 +100,9 @@ class GameViewModel @Inject constructor(
     private var endedDate: LocalDate? = null
     /** Times the old show came back after its end; capped, so a lagging server isn't asked forever. */
     private var rolloverRetries = 0
+    private var loadJob: Job? = null
+    /** The connection came back while [loadJob] was out: if that load fails, it's tried again. */
+    private var reloadIfLoadFails = false
 
     init {
         // Load the search index now so the first keystroke in the guess box is instant.
@@ -121,6 +124,9 @@ class GameViewModel @Inject constructor(
                 if (online && wasOffline) {
                     when {
                         _state.value.loadError != null -> loadShow()
+                        // A load still out may yet fail for the connection it started without:
+                        // it's tried again once it's back, rather than a second load racing it.
+                        loadJob?.isActive == true -> reloadIfLoadFails = true
                         sending.isNotEmpty() -> resendNow()
                     }
                     // Clips that didn't finish downloading before the drop: ready them now.
@@ -178,7 +184,8 @@ class GameViewModel @Inject constructor(
     }
 
     private fun loadShow() {
-        viewModelScope.launch {
+        reloadIfLoadFails = false
+        loadJob = viewModelScope.launch {
             _state.update { it.copy(isLoading = true, loadError = null) }
             showRepository.todaysShow()
                 .onSuccess { loaded ->
@@ -194,6 +201,7 @@ class GameViewModel @Inject constructor(
                 .onFailure { error ->
                     if (!error.isConnectivity()) telemetry.recordError("load_show", error)
                     _state.update { it.copy(isLoading = false, loadError = error.toUiText()) }
+                    if (reloadIfLoadFails && !_state.value.isOffline) loadShow()
                 }
         }
     }
@@ -337,18 +345,19 @@ class GameViewModel @Inject constructor(
         // One requestId per try; the server ignores repeats of the same id.
         val requestId = UUID.randomUUID().toString()
         // Shown at once, before the server answers. A skip is always a skip, so it lands as one
-        // and the ladder moves on; a guess shows as sending until its verdict comes back.
-        if (type == TryType.SKIP) {
-            (before.apply(TryRecord(requestId, TryType.SKIP, null, TryResult.SKIPPED)) as? Outcome.Success)?.data?.let { skipped ->
-                this.show = show.copy(rounds = show.rounds + (tier to skipped))
-            }
+        // and the ladder moves on; a guess shows as sending until its verdict comes back. So does
+        // the last skip: it ends the round, and the round's song comes only with the answer.
+        val skipped = if (type == TryType.SKIP) {
+            (before.apply(TryRecord(requestId, TryType.SKIP, null, TryResult.SKIPPED)) as? Outcome.Success)?.data
+                ?.takeIf { it.status == RoundStatus.OPEN }
         } else {
-            sending[tier] = songId
+            null
         }
+        if (skipped != null) this.show = show.copy(rounds = show.rounds + (tier to skipped)) else sending[tier] = songId
         clearGuess()
         _state.update { it.copy(isSubmitting = true) }
         publishShow()
-        if (type == TryType.SKIP) preloadCurrentClip()
+        if (skipped != null) preloadCurrentClip()
 
         viewModelScope.launch {
             val result = showRepository.submitTry(show.date, tier, requestId, type, songId)

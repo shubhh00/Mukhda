@@ -38,8 +38,21 @@ class FakeShowRepository : ShowRepository {
     var endsAt: Instant = Instant.parse("2026-10-13T18:30:00Z")
     var next: NextShow? = null
 
+    /** When set, the next load waits for it before the "server" answers. */
+    var showGate: CompletableDeferred<Unit>? = null
+    /** Fails the next load only. */
+    var loadErrorOnce: DataError? = null
+
     override suspend fun todaysShow(): Outcome<Show, DataError> {
         loads++
+        showGate?.let { gate ->
+            showGate = null
+            gate.await()
+        }
+        loadErrorOnce?.let { error ->
+            loadErrorOnce = null
+            return Outcome.Error(error)
+        }
         loadError?.let { return Outcome.Error(it) }
         return Outcome.Success(
             Show(

@@ -101,14 +101,17 @@ private fun SendingSlot(slot: TrySlotUi.Sending) {
     ) {
         Numeral(slot.number, used = true)
         Column(modifier = Modifier.weight(1f)) {
+            // A skip has no song to name: just "Skipping…".
             Text(
-                text = slot.title ?: stringResource(R.string.slot_skipped),
+                text = slot.title ?: stringResource(R.string.slot_skipping),
                 style = type.bodyStrong.copy(fontSize = type.bodySmall.fontSize * 1.17f),
                 color = colors.muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(stringResource(R.string.slot_sending), style = type.bodySmall, color = colors.muted, maxLines = 1)
+            if (slot.title != null) {
+                Text(stringResource(R.string.slot_sending), style = type.bodySmall, color = colors.muted, maxLines = 1)
+            }
         }
         CircularProgressIndicator(modifier = Modifier.size(16.dp), color = colors.muted, strokeWidth = 2.dp)
     }

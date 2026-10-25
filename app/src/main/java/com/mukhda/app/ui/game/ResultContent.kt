@@ -324,8 +324,3 @@ internal fun rememberSecondsLeft(endsAtEpochMs: Long, clockOffsetMs: Long): Long
     }
     return ((endsAtEpochMs - now) / TICK_MS).coerceAtLeast(0)
 }
-
-/** The clip label for share text: "1 sec", or out of tries. */
-@StringRes
-internal fun shareClipRes(round: RoundUi): Int =
-    round.solvedAtStep?.let { clipLengthRes(it.coerceIn(0, ClipLadder.LAST_STEP)) } ?: R.string.share_out_of_tries

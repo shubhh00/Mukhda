@@ -466,6 +466,20 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `the last skip shows as sending, so the round ends with its song rather than before it`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(4) { vm.onAction(GameAction.OnSkipClick) }
+        show.answerGate = CompletableDeferred()
+        vm.onAction(GameAction.OnSkipClick)
+        with(vm.state.value.round!!) {
+            assertThat(isOpen).isTrue()
+            assertThat(slots.last()).isInstanceOf<TrySlotUi.Sending>()
+        }
+        show.answerGate!!.complete(Unit)
+        assertThat(vm.state.value.round!!.isOpen).isFalse()
+    }
+
+    @Test
     fun `a guess shows as sending until its verdict comes back`() = runTest(dispatcher) {
         show.answerGate = CompletableDeferred()
         val vm = viewModel()
@@ -583,6 +597,35 @@ class GameViewModelTest {
         connectivity.isOnline.value = true
         assertThat(vm.state.value.isOffline).isFalse()
         assertThat(vm.state.value.loadError).isNull()
+    }
+
+    @Test
+    fun `back online while the show is loading, a load that then fails is tried again`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        show.showGate = gate
+        show.loadErrorOnce = DataError.Network.NO_INTERNET
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        connectivity.isOnline.value = true
+        // The load that was out when the connection came back fails after all.
+        gate.complete(Unit)
+        assertThat(show.loads).isEqualTo(2)
+        assertThat(vm.state.value.loadError).isNull()
+        assertThat(vm.state.value.showNo).isEqualTo(12)
+    }
+
+    @Test
+    fun `a load that fails while still offline isn't tried again until the connection is back`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        show.showGate = gate
+        show.loadErrorOnce = DataError.Network.NO_INTERNET
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        connectivity.isOnline.value = true
+        connectivity.isOnline.value = false
+        gate.complete(Unit)
+        assertThat(show.loads).isEqualTo(1)
+        assertThat(vm.state.value.loadError).isNotNull()
     }
 
     /** Virtual ms from the test's start (noon IST) to [show]'s end, at 00:00 IST. */

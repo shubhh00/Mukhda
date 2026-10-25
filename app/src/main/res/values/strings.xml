@@ -52,6 +52,7 @@
     <string name="now_showing">Now showing</string>
     <!-- A try that couldn't reach the server yet. -->
     <string name="slot_sending">Sending…</string>
+    <string name="slot_skipping">Skipping…</string>
     <!-- The strip under the header while the phone is offline. -->
     <string name="offline_title">You\'re offline</string>
     <string name="offline_waiting">Your try will go through when you\'re back</string>
@@ -81,8 +82,6 @@
     <string name="stamp_correct">CORRECT</string>
     <string name="slot_skipped">Skipped</string>
     <string name="slot_unknown_song">Song not in the list</string>
-    <string name="round_won">You got it.</string>
-    <string name="round_lost">Out of tries for this tier. Try another one, or come back for the next show.</string>
 
     <string name="guess_hint">Type a song or film</string>
     <string name="guess_closed">This round is over</string>
@@ -123,20 +122,26 @@
 
     <!-- Ticket -->
     <string name="ticket_heading">Your ticket for today</string>
-    <string name="ticket_on">On the %1$s</string>
-    <string name="ticket_tagline">Five songs.\nA new show every day.</string>
-    <string name="ticket_get_it">Get it on Google Play</string>
+    <!-- "3 of 5": songs got out of the day's five. -->
+    <string name="ticket_score">%1$d of %2$d</string>
+    <string name="ticket_songs_got">Songs got today</string>
+    <string name="ticket_playing">Playing</string>
+    <string name="ticket_not_seen">Not seen</string>
+    <string name="ticket_starring">Starring you</string>
+    <string name="ticket_now_showing">Now showing on Google Play</string>
+    <string name="ticket_admit_one">Admit one</string>
+    <!-- The day's best rank: "Top 4% on Easy". -->
+    <string name="ticket_top_on">Top %1$d%% on %2$s</string>
     <string name="ticket_no_spoilers">No song or film name on the ticket</string>
+    <string name="ticket_tear_hint">Tear off the stub to share</string>
     <string name="share">Share</string>
     <string name="cd_close">Close</string>
-    <!-- Shared with the ticket image. %1$d show, %2$s tier, %3$s verdict, %4$s clip, %5$s squares, %6$s link. -->
     <!-- "Top 12% today": the share of the day's players who did at least as well. -->
     <string name="top_percent">Top %1$d%% today</string>
-    <string name="share_top_percent">" · Top %1$d%%"</string>
-    <string name="share_text">Mukhda · Show No. %1$d · %2$s · %3$s (%4$s)%7$s
-%5$s
-%6$s</string>
-    <string name="share_out_of_tries">out of tries</string>
+    <!-- Shared with the ticket image. %1$d show, %2$d songs got, %3$d songs in the show, %4$s a line per tier, %5$s link, %6$s " · Top 4% on Easy" or nothing. -->
+    <string name="share_text">Mukhda · Show No. %1$d · %2$d of %3$d%6$s
+%4$s
+%5$s</string>
     <string name="play_store_url" translatable="false">https://play.google.com/store/apps/details?id=com.mukhda.app</string>
     <string name="volume_low">Turn up the volume. Clips are short.</string>
 
