@@ -1,6 +1,7 @@
 import { type Firestore, Timestamp } from "firebase-admin/firestore";
 import { logger } from "firebase-functions";
 import {
+  type NextShow,
   type Reveal,
   type RoundDoc,
   type ScheduleDoc,
@@ -14,7 +15,7 @@ import {
 import { type PreviewLookup, confirmPreview } from "./previews.ts";
 import { enforceRateLimit } from "./rate-limit.ts";
 import { currentStep, topPercent } from "./rules.ts";
-import { istDate, showEndsAt } from "./time.ts";
+import { addDays, istDate, showEndsAt } from "./time.ts";
 
 export const roundId = (uid: string, date: string, tier: Tier) => `${uid}_${date}_${tier}`;
 export const statsId = (date: string, tier: Tier) => `${date}_${tier}`;
@@ -121,7 +122,12 @@ export function revealOf(song: SongDoc, stats: SongStatsDoc | undefined, solvedA
  * Today's show for one player: each tier's clip and where the player is in it. The answer is
  * only in a tier's `reveal`, and only once that player's round is over.
  */
-export async function getShow(db: Firestore, uid: string, now: Date, lookup: PreviewLookup): Promise<ShowResponse> {
+export async function getShow(
+  db: Firestore,
+  uid: string,
+  now: Date,
+  lookup: PreviewLookup,
+): Promise<ShowResponse> {
   // A show is a dozen reads: counted first, so nobody can make them without limit.
   await enforceRateLimit(db, uid, "show", now);
   const date = istDate(now);
@@ -154,5 +160,33 @@ export async function getShow(db: Firestore, uid: string, now: Date, lookup: Pre
       ];
     }),
   );
-  return { date, showNo: schedule.showNo, endsAt: showEndsAt(date).toISOString(), tiers: Object.fromEntries(tiers) };
+  return {
+    date,
+    showNo: schedule.showNo,
+    endsAt: showEndsAt(date).toISOString(),
+    serverTime: now.toISOString(),
+    tiers: Object.fromEntries(tiers),
+    next: await nextShow(db, date, now, lookup),
+  };
+}
+
+/** How long before the end the next show's clips are sent, to download ahead (AGENTS.md §3.5). */
+export const NEXT_SHOW_LEAD_MS = 5 * 60 * 1000;
+
+/** Tomorrow's clips, in [date]'s last minutes; null before then or when tomorrow isn't scheduled. */
+async function nextShow(db: Firestore, date: string, now: Date, lookup: PreviewLookup): Promise<NextShow | null> {
+  if (showEndsAt(date).getTime() - now.getTime() > NEXT_SHOW_LEAD_MS) return null;
+  const tomorrow = addDays(date, 1);
+  try {
+    const songs = await activeSongs(db, tomorrow, TIERS, now, lookup);
+    // The audio and where its clips start: no song id, title or film.
+    const previews = Object.fromEntries(TIERS.map((tier) => {
+      const song = songs.get(tier)!;
+      return [tier, { previewUrl: song.previewUrl, startOffsetMs: song.startOffsetMs }];
+    }));
+    return { date: tomorrow, previews };
+  } catch (error) {
+    if (error instanceof NoShowError) return null;
+    throw error;
+  }
 }

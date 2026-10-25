@@ -9,7 +9,15 @@ data class ShowDto(
     val showNo: Int,
     val endsAt: String,
     val tiers: Map<String, TierDto>,
+    val serverTime: String? = null,
+    val next: NextShowDto? = null,
 )
+
+@Serializable
+data class NextShowDto(val date: String, val previews: Map<String, PreviewDto>)
+
+@Serializable
+data class PreviewDto(val previewUrl: String, val startOffsetMs: Long = 0)
 
 @Serializable
 data class TierDto(

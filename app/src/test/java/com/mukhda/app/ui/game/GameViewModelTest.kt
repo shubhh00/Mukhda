@@ -22,6 +22,8 @@ import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
+import com.mukhda.domain.audio.Preview
+import com.mukhda.domain.show.NextShow
 import com.mukhda.domain.telemetry.TelemetryEvent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -61,9 +63,15 @@ class GameViewModelTest {
     private val telemetry = FakeTelemetry()
     private val flags = FakeFeatureFlags()
     private val connectivity = FakeConnectivityMonitor()
+    /** The phone's clock, running with the test's virtual time from noon IST on the show date. */
+    private val clock = object : java.time.Clock() {
+        override fun getZone() = java.time.ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId?) = this
+        override fun instant(): java.time.Instant = java.time.Instant.parse("2026-10-13T06:30:00Z").plusMillis(dispatcher.scheduler.currentTime)
+    }
 
     private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) =
-        GameViewModel(handle, show, songIndex, player, history, telemetry, flags, connectivity)
+        GameViewModel(handle, show, songIndex, player, history, telemetry, flags, connectivity, clock)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -575,6 +583,76 @@ class GameViewModelTest {
         connectivity.isOnline.value = true
         assertThat(vm.state.value.isOffline).isFalse()
         assertThat(vm.state.value.loadError).isNull()
+    }
+
+    /** Virtual ms from the test's start (noon IST) to [show]'s end, at 00:00 IST. */
+    private val toMidnight = 12 * 60 * 60 * 1000L
+
+    @Test
+    fun `in the show's last five minutes the marquee counts down and tomorrow's clips download`() = runTest(dispatcher) {
+        val tomorrow = Preview("https://example.com/tomorrow-easy.m4a")
+        show.next = NextShow(show.date.plusDays(1), mapOf(Tier.EASY to tomorrow))
+        val vm = viewModel()
+        advanceTimeBy(toMidnight - 5 * 60 * 1000L - 1_000)
+        assertThat(vm.state.value.isLastCall).isFalse()
+        assertThat(tomorrow in player.cached).isFalse()
+        advanceTimeBy(2_000)
+        assertThat(vm.state.value.isLastCall).isTrue()
+        assertThat(tomorrow in player.cached).isTrue()
+    }
+
+    @Test
+    fun `at midnight today's show loads in place of the old one`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+
+        advanceTimeBy(toMidnight + 1)
+        with(vm.state.value) {
+            assertThat(showNo).isEqualTo(13)
+            assertThat(isLastCall).isFalse()
+        }
+    }
+
+    @Test
+    fun `back on screen after midnight, today's show loads at once`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnScreenHidden)
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+        advanceTimeBy(toMidnight + 60_000)
+        // In the background nothing loads.
+        assertThat(vm.state.value.showNo).isEqualTo(12)
+        vm.onAction(GameAction.OnScreenShown)
+        assertThat(vm.state.value.showNo).isEqualTo(13)
+    }
+
+    @Test
+    fun `a try the server turns away as after midnight loads today's show`() = runTest(dispatcher) {
+        val vm = viewModel()
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+        show.nextTryError = TryError.Rule(GameError.ROUND_CLOSED)
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(vm.state.value.showNo).isEqualTo(13)
+    }
+
+    @Test
+    fun `a running show isn't reloaded over and over, and midnight still comes`() = runTest(dispatcher) {
+        val vm = viewModel()
+        val loadsAfterLaunch = show.loads
+        advanceTimeBy(60_000)
+        assertThat(show.loads).isEqualTo(loadsAfterLaunch)
+
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+        advanceTimeBy(toMidnight)
+        assertThat(vm.state.value.showNo).isEqualTo(13)
     }
 
     @Test

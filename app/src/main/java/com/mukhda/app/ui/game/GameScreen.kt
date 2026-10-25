@@ -171,6 +171,7 @@ fun GameScreen(
                 streak = state.streak,
                 hasPlayed = state.playedDays.isNotEmpty(),
                 onStreakClick = { onAction(GameAction.OnStreakClick) },
+                showLine = state.loadError == null,
             )
             val round = state.round
             when {
@@ -188,7 +189,10 @@ fun GameScreen(
                     // box. With the keyboard up it fills this space and scrolls; with the keyboard down
                     // the record stays visible above it. A tap anywhere else closes it.
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter, playhead, state.showTopPercent)
+                        RoundContent(
+                            state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter, playhead, state.showTopPercent,
+                            lastCall = LastCall(state.endsAtEpochMs, state.clockOffsetMs).takeIf { state.isLastCall },
+                        )
                         if (state.isDropdownOpen) {
                             Box(
                                 Modifier
@@ -228,6 +232,7 @@ fun GameScreen(
                         ResultBar(
                             nextTier = state.nextTier,
                             endsAtEpochMs = state.endsAtEpochMs,
+                            clockOffsetMs = state.clockOffsetMs,
                             onAction = onAction,
                             modifier = barInsets,
                         )
@@ -268,6 +273,7 @@ fun GameScreen(
                 today = showDate,
                 showNo = state.showNo,
                 endsAtEpochMs = state.endsAtEpochMs,
+                clockOffsetMs = state.clockOffsetMs,
                 onClose = { onAction(GameAction.OnHousefullClose) },
             )
         }
@@ -325,6 +331,7 @@ private fun RoundContent(
     onStageCenter: (Offset) -> Unit,
     playhead: () -> ClipProgress?,
     showTopPercent: Boolean,
+    lastCall: LastCall?,
 ) {
     val onPlayClick = { onAction(GameAction.OnPlayClick) }
     val reveal = round.reveal
@@ -350,6 +357,7 @@ private fun RoundContent(
                     reveal = reveal,
                     accent = tier.color(),
                     marquee = marquee(round, isPlaying),
+                    lastCall = lastCall,
                     modifier = Modifier
                         .padding(top = 16.dp)
                         .fillMaxWidth()

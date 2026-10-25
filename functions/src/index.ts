@@ -47,11 +47,20 @@ function toHttpsError(error: unknown): HttpsError {
   return new HttpsError("internal", "Something went wrong");
 }
 
+/**
+ * The game's clock. In the local emulator only, MUKHDA_CLOCK_OFFSET_MS shifts it, so midnight can
+ * be tested at any hour; the deployed functions always use the real time.
+ */
+function serverNow(): Date {
+  const offset = process.env.FUNCTIONS_EMULATOR === "true" ? Number(process.env.MUKHDA_CLOCK_OFFSET_MS ?? 0) : 0;
+  return new Date(Date.now() + (Number.isFinite(offset) ? offset : 0));
+}
+
 /** Today's show for the caller (AGENTS.md §7). */
 export const getShow = onCall(gameCall, async (request) => {
   const uid = uidOf(request);
   try {
-    return await getShowImpl(getFirestore(), uid, new Date(), itunesPreview);
+    return await getShowImpl(getFirestore(), uid, serverNow(), itunesPreview);
   } catch (error) {
     throw toHttpsError(error);
   }
@@ -62,7 +71,7 @@ export const submitTry = onCall(gameCall, async (request) => {
   const uid = uidOf(request);
   const payload = parseSubmitTry(request.data);
   try {
-    return await submitTryImpl(getFirestore(), uid, payload, new Date(), itunesPreview);
+    return await submitTryImpl(getFirestore(), uid, payload, serverNow(), itunesPreview);
   } catch (error) {
     throw toHttpsError(error);
   }
@@ -70,7 +79,7 @@ export const submitTry = onCall(gameCall, async (request) => {
 
 /** Five past midnight IST: yesterday's open rounds become UNFINISHED. */
 export const closeDay = onSchedule({ schedule: "5 0 * * *", timeZone: "Asia/Kolkata" }, async () => {
-  await closeDayImpl(getFirestore(), new Date());
+  await closeDayImpl(getFirestore(), serverNow());
 });
 
 /**

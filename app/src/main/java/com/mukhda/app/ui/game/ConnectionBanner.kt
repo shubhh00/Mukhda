@@ -93,7 +93,8 @@ fun ConnectionBanner(isOffline: Boolean, tryWaiting: Boolean, animationsEnabled:
                         icon = { NoSignal(MukhdaTheme.colors.marigold) },
                     )
                     Connection.BACK -> Banner(
-                        background = MukhdaTheme.colors.marigold,
+                        // Deep marigold, so it doesn't read as the Easy tier's colour.
+                        background = MukhdaTheme.colors.marigoldDeep,
                         accent = MukhdaTheme.colors.ink,
                         text = MukhdaTheme.colors.ink,
                         title = stringResource(R.string.online_title),

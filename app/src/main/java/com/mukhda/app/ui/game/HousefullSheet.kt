@@ -79,6 +79,7 @@ fun HousefullSheet(
     showNo: Int,
     /** When today's show closes (from the server), for "Next show in". */
     endsAtEpochMs: Long,
+    clockOffsetMs: Long,
     onClose: () -> Unit,
 ) {
     val colors = MukhdaTheme.colors
@@ -123,7 +124,7 @@ fun HousefullSheet(
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     )
                     Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
-                        Countdown(endsAtEpochMs)
+                        Countdown(endsAtEpochMs, clockOffsetMs)
                     }
                 }
             }

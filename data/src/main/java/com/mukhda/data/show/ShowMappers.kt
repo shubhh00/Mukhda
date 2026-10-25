@@ -8,6 +8,7 @@ import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.SongReveal
 import com.mukhda.domain.round.TryRecord
+import com.mukhda.domain.show.NextShow
 import com.mukhda.domain.show.Show
 import java.time.Instant
 import java.time.LocalDate
@@ -21,8 +22,15 @@ fun ShowDto.toShow(): Show {
         endsAt = Instant.parse(endsAt),
         rounds = tiers.mapValues { (tier, dto) -> dto.toRoundState(tier) },
         previews = tiers.mapValues { (_, dto) -> Preview(dto.previewUrl, dto.startOffsetMs) },
+        serverTime = serverTime?.let(Instant::parse),
+        next = next?.let { next ->
+            NextShow(LocalDate.parse(next.date), next.previews.knownTiers().mapValues { (_, p) -> Preview(p.previewUrl, p.startOffsetMs) })
+        },
     )
 }
+
+private fun <T> Map<String, T>.knownTiers(): Map<Tier, T> =
+    mapNotNull { (name, value) -> Tier.entries.firstOrNull { it.name == name }?.let { it to value } }.toMap()
 
 fun TierDto.toRoundState(tier: Tier): RoundState {
     val records = tries.map { it.toTryRecord() }

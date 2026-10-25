@@ -35,6 +35,7 @@ import com.mukhda.domain.telemetry.FeatureFlags
 import com.mukhda.domain.telemetry.Telemetry
 import com.mukhda.domain.telemetry.TelemetryEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Clock
 import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
@@ -59,6 +60,7 @@ class GameViewModel @Inject constructor(
     private val telemetry: Telemetry,
     private val featureFlags: FeatureFlags,
     private val connectivity: ConnectivityMonitor,
+    private val clock: Clock,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GameState(guessText = savedStateHandle[KEY_GUESS_TEXT] ?: ""))
@@ -88,6 +90,16 @@ class GameViewModel @Inject constructor(
     private var resendJob: Job? = null
     /** The game is on screen; off while the app is in the background. */
     private val onScreen = MutableStateFlow(true)
+
+    /** The server's clock minus the phone's, from the last show: countdowns run on server time. */
+    private var clockOffsetMs = 0L
+    private fun serverNow(): Long = clock.millis() + clockOffsetMs
+    /** Waits for the show's last minutes, then its end (see [scheduleMidnight]). */
+    private var midnightJob: Job? = null
+    /** The show that just ended, until the next one loads. */
+    private var endedDate: LocalDate? = null
+    /** Times the old show came back after its end; capped, so a lagging server isn't asked forever. */
+    private var rolloverRetries = 0
 
     init {
         // Load the search index now so the first keystroke in the guess box is instant.
@@ -147,7 +159,14 @@ class GameViewModel @Inject constructor(
             GameAction.OnTicketClose -> _state.update { it.copy(isTicketOpen = false) }
             GameAction.OnScreenShown -> {
                 onScreen.value = true
-                if (sending.isNotEmpty()) resendNow()
+                // Back after the show ended (left in the background overnight): today's show at once.
+                // A timer may not have fired while the phone slept.
+                val current = show
+                if (current != null && serverNow() >= current.endsAt.toEpochMilli()) {
+                    rolloverRetries = 0
+                    rollOver(current.date)
+                }
+                else if (sending.isNotEmpty()) resendNow()
             }
             GameAction.OnScreenHidden -> onScreen.value = false
             GameAction.OnStreakClick -> {
@@ -188,6 +207,17 @@ class GameViewModel @Inject constructor(
         val before = show?.rounds
         show = loaded
         telemetry.setContext("show_date", loaded.date.toString())
+        loaded.serverTime?.let { clockOffsetMs = it.toEpochMilli() - clock.millis() }
+        _state.update { it.copy(clockOffsetMs = clockOffsetMs) }
+        // The next show after the last one ended. Nothing about the old show's songs: one may come
+        // round again some day.
+        val ended = endedDate
+        if (ended != null && loaded.date > ended) {
+            endedDate = null
+            rolloverRetries = 0
+            _state.update { it.copy(isLastCall = false) }
+        }
+        scheduleMidnight(loaded)
         // The show's rounds were saved on the phone as it loaded: read them now, so the streak
         // reaches the screen with the show rather than a moment after it.
         playedDays = Streak.playedDates(roundHistory.dayRounds().first())
@@ -403,10 +433,8 @@ class GameViewModel @Inject constructor(
         when (error) {
             is TryError.Data -> _events.send(GameEvent.ShowMessage(error.error.toUiText()))
             is TryError.Rule -> when (error.error) {
-                GameError.ROUND_CLOSED -> {
-                    _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.error_round_closed)))
-                    loadShow()
-                }
+                // Sent just as the show ended: today's show.
+                GameError.ROUND_CLOSED -> show?.let { rollOver(it.date) } ?: loadShow()
                 // The server knows better than this screen: reload and trust it.
                 GameError.TRIES_EXHAUSTED, GameError.ALREADY_FINISHED -> loadShow()
                 GameError.INVALID_SONG ->
@@ -464,6 +492,42 @@ class GameViewModel @Inject constructor(
         if (_state.value.round?.isOpen == true) viewModelScope.launch { clipPlayer.wakeSpeaker() }
     }
 
+    /**
+     * Times the show's end from the server's clock. In its last minutes the marquee counts down
+     * and tomorrow's clips download ahead; at the end, once the game is on screen, today's show
+     * loads.
+     */
+    private fun scheduleMidnight(loaded: Show) {
+        midnightJob?.cancel()
+        midnightJob = viewModelScope.launch {
+            val endsAt = loaded.endsAt.toEpochMilli()
+            delay(endsAt - LAST_CALL_MS - serverNow())
+            _state.update { it.copy(isLastCall = true) }
+            // The server sends tomorrow's clips in the last minutes; ask again if this show came earlier.
+            val next = loaded.next ?: (showRepository.todaysShow() as? Outcome.Success)?.data?.next
+            next?.let { launch { clipPlayer.cache(it.previews.values) } }
+            // Still the old show (asked a moment before the server's midnight): ask again shortly,
+            // for a minute at most; after that, the next time the game comes on screen.
+            if (loaded.date == endedDate) {
+                if (rolloverRetries++ >= MAX_ROLLOVER_RETRIES) return@launch
+                delay(RETRY_ROLLOVER_MS)
+            } else {
+                delay(endsAt - serverNow())
+            }
+            onScreen.first { it }
+            rollOver(loaded.date)
+        }
+    }
+
+    /** The show on [date] has ended: today's loads in its place. */
+    private fun rollOver(date: LocalDate) {
+        midnightJob?.cancel()
+        stopPlaying()
+        endedDate = date
+        _state.update { it.copy(isLastCall = false, isTicketOpen = false, isHousefullOpen = false) }
+        loadShow()
+    }
+
     /** Logs [event] for the selected tier's finished round, with its verdict. */
     private fun logVerdict(event: (Tier, Verdict) -> TelemetryEvent) {
         val tier = _state.value.selectedTier
@@ -482,6 +546,10 @@ class GameViewModel @Inject constructor(
 
     private companion object {
         const val KEY_GUESS_TEXT = "guessText"
+        /** From five minutes before the end, the marquee counts down (AGENTS.md §3.5). */
+        const val LAST_CALL_MS = 5 * 60 * 1000L
+        const val RETRY_ROLLOVER_MS = 2_000L
+        const val MAX_ROLLOVER_RETRIES = 30
         /** About one frame: the playhead moves smoothly. */
         const val PLAYHEAD_TICK_MS = 16L
         const val SEARCH_DEBOUNCE_MS = 150L

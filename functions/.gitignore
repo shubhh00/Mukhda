@@ -1,2 +1,4 @@
 node_modules/
 lib/
+# Emulator-only settings (the local test clock); never deployed.
+.env.local

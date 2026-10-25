@@ -154,6 +154,8 @@ class FirebaseShowRepository @Inject constructor(
             is Outcome.Error -> Outcome.Error((fetched.error as? TryError.Data)?.error ?: DataError.Network.UNKNOWN)
             is Outcome.Success -> {
                 current = fetched.data
+                // Rounds of earlier days still open on the phone closed at their midnight: unfinished.
+                roundDao.closeOpenBefore(fetched.data.date.toString(), RoundStatus.UNFINISHED.name, System.currentTimeMillis())
                 fetched.data.rounds.values.filter { it.isStarted }.forEach { saveRound(fetched.data.date, it) }
                 fetched
             }

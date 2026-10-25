@@ -67,6 +67,9 @@
     <string name="marquee_climax">Climax</string>
     <string name="marquee_won">Happy ending</string>
     <string name="marquee_lost">The end</string>
+    <!-- The marquee in the show's last five minutes. -->
+    <string name="marquee_last_call">Last show · ends in %1$s</string>
+    <!-- The popup when the show ends with rounds unfinished. -->
     <!-- The whole song, played again after the reveal. -->
     <string name="marquee_encore">Encore</string>
     <string name="cd_play_clip">Play clip</string>

@@ -21,7 +21,14 @@ data class Show(
     val rounds: Map<Tier, RoundState>,
     /** Each tier's preview. The server sends these, never the songs behind them. */
     val previews: Map<Tier, Preview> = emptyMap(),
+    /** The server's clock as it answered: countdowns run on it, never on the phone's own. */
+    val serverTime: Instant? = null,
+    /** In the show's last minutes: tomorrow's clips, to download ahead. */
+    val next: NextShow? = null,
 )
+
+/** Tomorrow's clips, sent in today's last minutes. Audio only: no song behind them. */
+data class NextShow(val date: LocalDate, val previews: Map<Tier, Preview>)
 
 /** Why a try wasn't accepted: the request failed, or the game's rules refused it. */
 sealed interface TryError : AppError {

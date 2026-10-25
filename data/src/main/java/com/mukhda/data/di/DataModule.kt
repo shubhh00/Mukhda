@@ -31,6 +31,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import java.time.Clock
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
@@ -54,6 +55,10 @@ object DatabaseModule {
 
     @Provides
     fun tryDao(db: MukhdaDatabase): TryDao = db.tryDao()
+
+    /** The phone's clock: only for timing, offset by the server's (the game never trusts it alone). */
+    @Provides
+    fun clock(): Clock = Clock.systemUTC()
 
     @Provides
     @IoDispatcher

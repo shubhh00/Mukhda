@@ -113,7 +113,16 @@ export interface ShowResponse {
   showNo: number;
   /** The show's last moment: the next midnight IST, as an ISO instant. */
   endsAt: string;
+  /** The server's clock as it answered, so the app's countdowns don't trust the phone's. */
+  serverTime: string;
   tiers: Partial<Record<Tier, TierState>>;
+  /** In the show's last minutes: tomorrow's clips, to download ahead. Audio links only. */
+  next: NextShow | null;
+}
+
+export interface NextShow {
+  date: string;
+  previews: Partial<Record<Tier, { previewUrl: string; startOffsetMs: number }>>;
 }
 
 export interface SubmitTryRequest {

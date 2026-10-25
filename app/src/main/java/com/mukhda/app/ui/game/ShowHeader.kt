@@ -37,6 +37,8 @@ fun ShowHeader(
     hasPlayed: Boolean,
     onStreakClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** False while the show can't load: the last show's number may already be over. */
+    showLine: Boolean = true,
 ) {
     val colors = MukhdaTheme.colors
     val type = MukhdaTheme.typography
@@ -56,7 +58,7 @@ fun ShowHeader(
             if (showNo > 0) StreakBadge(streak, hasPlayed, onClick = onStreakClick)
         }
         Text(
-            text = if (showNo > 0) stringResource(R.string.show_line, showNo, dateLabel) else "",
+            text = if (showNo > 0 && showLine) stringResource(R.string.show_line, showNo, dateLabel) else "",
             style = type.caption.copy(fontSize = 11.sp, letterSpacing = MukhdaTheme.typography.label.letterSpacing),
             color = colors.muted,
             modifier = Modifier.padding(top = 4.dp),
