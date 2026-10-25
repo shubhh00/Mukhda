@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TIERS } from "../src/popularity.ts";
-import { FILM_GAP_DAYS, MIN_WEIGHT, type SchedulableSong, SONG_GAP_DAYS, addDays, drawWeight, schedule, showNoOf } from "../src/schedule.ts";
+import { FILM_GAP_DAYS, MIN_WEIGHT, type SchedulableSong, SONG_GAP_DAYS, addDays, drawWeight, replaceSongs, schedule, showNoOf } from "../src/schedule.ts";
 
 /** [perTier] songs per tier, each from its own film, with [composers] composers taking turns. */
 function pool(perTier: number, composers = 50): SchedulableSong[] {
@@ -89,4 +89,34 @@ test("Easy, Medium and Hard draw recent songs more often; Expert and Legend don'
     days.filter((d) => year(d.tiers[tier].songId) >= 2016).length / days.length;
   assert.ok(recentShare("EASY") > 0.55, `Easy recent share ${recentShare("EASY")}`);
   assert.ok(recentShare("LEGEND") < 0.5, `Legend recent share ${recentShare("LEGEND")}`);
+});
+
+test("replaceSongs swaps rejected songs on later days only, within the tier and the rules", () => {
+  const songs = pool(40);
+  const days = schedule(songs, [], "2026-10-01", 20, "2026-10-01", 1);
+  const out = new Set([days[2]!.tiers.HARD.songId, days[10]!.tiers.LEGEND.songId, days[12]!.tiers.EASY.backupSongId]);
+  const changes = replaceSongs(songs, days, (id) => out.has(id), "2026-10-05", 1);
+
+  // Every slot holding a rejected song from "from" on, main or backup, wherever it recurs; day 3
+  // (2026-10-03) is before "from", so its Hard song stays even though it's out.
+  const expected = days
+    .filter((d) => d.date >= "2026-10-05")
+    .flatMap((d) => TIERS.flatMap((t) => (["songId", "backupSongId"] as const).filter((slot) => out.has(d.tiers[t][slot])).map((slot) => [d.date, t, slot])));
+  assert.ok(expected.length >= 2);
+  assert.deepEqual(changes.map((c) => [c.date, c.tier, c.slot]), expected);
+  assert.ok(!changes.some((c) => c.date < "2026-10-05"));
+  const scheduled = new Set(days.flatMap((d) => TIERS.flatMap((t) => [d.tiers[t].songId, d.tiers[t].backupSongId])));
+  const filmOf = new Map(songs.map((s) => [s.songId, s.filmId]));
+  for (const c of changes) {
+    assert.ok(!out.has(c.to));
+    assert.ok(!scheduled.has(c.to), "never a song already scheduled");
+    assert.equal(songs.find((s) => s.songId === c.to)!.tier, c.tier);
+    const n = Date.parse(c.date) / 86_400_000;
+    for (const d of days) {
+      const m = Date.parse(d.date) / 86_400_000;
+      if (m !== n && Math.abs(m - n) < FILM_GAP_DAYS) for (const t of TIERS) assert.notEqual(filmOf.get(d.tiers[t].songId), filmOf.get(c.to));
+    }
+  }
+  // Same seed, same picks.
+  assert.deepEqual(replaceSongs(songs, days, (id) => out.has(id), "2026-10-05", 1), changes);
 });

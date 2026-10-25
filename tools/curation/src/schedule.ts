@@ -123,3 +123,68 @@ export function schedule(
   }
   return out;
 }
+
+/** One slot of a scheduled day changed by [replaceSongs]. */
+export interface Replacement {
+  date: string;
+  tier: Tier;
+  slot: "songId" | "backupSongId";
+  from: string;
+  to: string;
+}
+
+/**
+ * Swaps every song [isOut] rejects, main or backup, on days from [from] on, for another song of the
+ * same tier that [isOut] accepts. The same hard rules as [schedule]: a replacement is no song
+ * already scheduled on any day, and its film is on no other day within [FILM_GAP_DAYS] (either
+ * way, as later days are already set) nor twice that day. Days before [from] are never changed: they
+ * may be live. Returns the changes, in date order; [days] is not modified. Throws when a tier has no
+ * song that fits.
+ */
+export function replaceSongs(
+  songs: SchedulableSong[],
+  days: ScheduledDay[],
+  isOut: (songId: string) => boolean,
+  from: string,
+  seed: number,
+): Replacement[] {
+  const filmOf = new Map(songs.map((s) => [s.songId, s.filmId]));
+  const used = new Set(days.flatMap((d) => TIERS.flatMap((t) => [d.tiers[t].songId, d.tiers[t].backupSongId])));
+  // Every day a film is the answer on, to keep it a week apart.
+  const filmDays = new Map<string, number[]>();
+  const noteFilm = (songId: string, n: number) => {
+    const film = filmOf.get(songId);
+    if (film) filmDays.set(film, [...(filmDays.get(film) ?? []), n]);
+  };
+  for (const d of days) for (const t of TIERS) noteFilm(d.tiers[t].songId, dayNumber(d.date));
+
+  const byTier = Map.groupBy(songs.filter((s) => !isOut(s.songId)), (s) => s.tier);
+  const out: Replacement[] = [];
+  for (const day of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
+    if (day.date < from) continue;
+    const n = dayNumber(day.date);
+    for (const [t, tier] of TIERS.entries()) {
+      for (const slot of ["songId", "backupSongId"] as const) {
+        const current = day.tiers[tier][slot];
+        if (!isOut(current)) continue;
+        // The day's other films: every other main and backup.
+        const filmsToday = new Set(
+          TIERS.flatMap((other) => (["songId", "backupSongId"] as const).map((s) => [other, s] as const))
+            .filter(([other, s]) => !(other === tier && s === slot))
+            .map(([other, s]) => filmOf.get(day.tiers[other][s])),
+        );
+        const fits = (s: SchedulableSong) =>
+          !used.has(s.songId) &&
+          !filmsToday.has(s.filmId) &&
+          (filmDays.get(s.filmId) ?? []).every((m) => m === n || Math.abs(n - m) >= FILM_GAP_DAYS);
+        const year = Number(day.date.slice(0, 4));
+        const pick = weightedOrder(byTier.get(tier) ?? [], (s) => drawWeight(s, year), seed * 7919 + n * 31 + t).find(fits);
+        if (!pick) throw new Error(`No ${tier} song fits to replace ${current} on ${day.date}`);
+        used.add(pick.songId);
+        if (slot === "songId") noteFilm(pick.songId, n);
+        out.push({ date: day.date, tier, slot, from: current, to: pick.songId });
+      }
+    }
+  }
+  return out;
+}
