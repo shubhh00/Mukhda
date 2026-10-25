@@ -18,6 +18,28 @@
         <item quantity="one">%1$d day housefull</item>
         <item quantity="other">%1$d days housefull</item>
     </plurals>
+    <string name="cd_open_housefull">Open your housefull calendar</string>
+    <!-- The housefull calendar, from the streak badge. -->
+    <string name="housefull_title">Housefull</string>
+    <!-- Under the big streak number: "12" / "days housefull". -->
+    <plurals name="housefull_unit">
+        <item quantity="one">day housefull</item>
+        <item quantity="other">days housefull</item>
+    </plurals>
+    <string name="housefull_best">Best run</string>
+    <plurals name="days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+    <string name="housefull_shows">Shows seen</string>
+    <string name="housefull_played">Played</string>
+    <string name="housefull_today">Today</string>
+    <string name="housefull_hint">Play any tier each day to keep the house full.</string>
+    <string name="housefull_start">Play any tier today to start a housefull run.</string>
+    <!-- The streak badge before a player's first try. -->
+    <string name="first_show">First show</string>
+    <string name="cd_previous_month">Previous month</string>
+    <string name="cd_next_month">Next month</string>
     <string name="clip_of">Clip %1$d of %2$d</string>
     <string name="clip_0">0.5 sec</string>
     <string name="clip_1">1 sec</string>
@@ -98,7 +120,10 @@
     <string name="share">Share</string>
     <string name="cd_close">Close</string>
     <!-- Shared with the ticket image. %1$d show, %2$s tier, %3$s verdict, %4$s clip, %5$s squares, %6$s link. -->
-    <string name="share_text">Mukhda · Show No. %1$d · %2$s · %3$s (%4$s)
+    <!-- "Top 12% today": the share of the day's players who did at least as well. -->
+    <string name="top_percent">Top %1$d%% today</string>
+    <string name="share_top_percent">" · Top %1$d%%"</string>
+    <string name="share_text">Mukhda · Show No. %1$d · %2$s · %3$s (%4$s)%7$s
 %5$s
 %6$s</string>
     <string name="share_out_of_tries">out of tries</string>

@@ -40,6 +40,13 @@ object Streak {
         return count
     }
 
+    /** The longest run of consecutive played days, ever. */
+    fun best(playedDates: Set<LocalDate>): Int =
+        playedDates.maxOfOrNull { day ->
+            // Count only from the first day of each run, so every run is walked once.
+            if (day.minusDays(1) in playedDates) 0 else generateSequence(day) { it.plusDays(1) }.takeWhile { it in playedDates }.count()
+        } ?: 0
+
     /** Days that count toward the streak. UNFINISHED rounds count; untouched rounds don't. */
     fun playedDates(rounds: Iterable<DayRound>): Set<LocalDate> =
         rounds.filter { it.triesUsed > 0 }.mapTo(mutableSetOf()) { it.date }

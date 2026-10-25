@@ -15,12 +15,12 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Song index in Room, loaded from the bundled asset on first use.
+ * Song index in Room, opened from the ready-built database bundled with the app (see
+ * [SearchDatabase]) on first use.
  *
  * Search takes two paths. FTS4 finds songs where every query word prefixes a title or film
  * word; when that gives a full page of results, they're ranked and returned. Otherwise the
@@ -29,50 +29,33 @@ import javax.inject.Singleton
  */
 @Singleton
 class RoomSongIndexDataSource @Inject constructor(
-    private val dao: SearchIndexDao,
-    private val asset: SearchIndexAsset,
+    private val store: SearchIndexStore,
     @param:IoDispatcher private val ioDispatcher: CoroutineDispatcher,
 ) : SongIndexDataSource {
 
     private val mutex = Mutex()
-    private var isPrepared = false
     private var fullIndex: SongSearcher? = null
 
-    override suspend fun prepare(): EmptyOutcome<DataError.Local> = local { ensurePrepared() }
+    /** Opens the index now, so the first keystroke doesn't wait for it. */
+    override suspend fun prepare(): EmptyOutcome<DataError.Local> = local { store.dao().version(); Unit }
 
     override suspend fun search(query: String): Outcome<SearchResults, DataError.Local> = local {
         val tokens = SearchNormalizer.tokens(SearchNormalizer.normalize(query))
         if (query.trim().length < SongSearcher.MIN_QUERY_LENGTH || tokens.isEmpty()) {
             return@local SearchResults.EMPTY
         }
-        ensurePrepared()
-
-        val prefixMatches = dao.matchPrefix(tokens.joinToString(" ") { "$it*" })
+        val prefixMatches = store.dao().matchPrefix(tokens.joinToString(" ") { "$it*" })
         val fast = SongSearcher(prefixMatches.map { it.toSearchSong() }).search(query)
         if (fast.items.size >= SongSearcher.MAX_RESULTS) fast else fullIndex().search(query)
     }
 
     override suspend fun songs(ids: Collection<String>): Outcome<Map<String, SearchSong>, DataError.Local> = local {
         if (ids.isEmpty()) return@local emptyMap()
-        ensurePrepared()
-        dao.byIds(ids.distinct()).associate { it.songId to it.toSearchSong() }
-    }
-
-    private suspend fun ensurePrepared() = mutex.withLock {
-        if (isPrepared) return@withLock
-        val bundled = asset.latestVersion()
-        val loaded = dao.version() ?: 0
-        // A later downloaded index may already be newer than the bundled one; keep it.
-        if (bundled != null && bundled > loaded) {
-            val dto = json.decodeFromString<SearchIndexDto>(asset.read(bundled))
-            dao.replaceIndex(dto.songs.map { it.toEntity() }, bundled)
-            fullIndex = null
-        }
-        isPrepared = true
+        store.dao().byIds(ids.distinct()).associate { it.songId to it.toSearchSong() }
     }
 
     private suspend fun fullIndex(): SongSearcher = mutex.withLock {
-        fullIndex ?: SongSearcher(dao.all().map { it.toSearchSong() }).also { fullIndex = it }
+        fullIndex ?: SongSearcher(store.dao().all().map { it.toSearchSong() }).also { fullIndex = it }
     }
 
     private suspend fun <T> local(block: suspend () -> T): Outcome<T, DataError.Local> =
@@ -87,8 +70,4 @@ class RoomSongIndexDataSource @Inject constructor(
                 Outcome.Error(DataError.Local.UNKNOWN)
             }
         }
-
-    private companion object {
-        val json = Json { ignoreUnknownKeys = true }
-    }
 }

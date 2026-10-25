@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- No ads: Analytics doesn't read the advertising ID, and the app doesn't ask for it. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
 
     <application
         android:name=".MukhdaApplication"
@@ -24,6 +27,11 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <meta-data android:name="google_analytics_adid_collection_enabled" android:value="false" />
+        <!-- Off in debug builds, so testing doesn't mix with players' numbers and crashes. -->
+        <meta-data android:name="firebase_analytics_collection_enabled" android:value="${telemetryEnabled}" />
+        <meta-data android:name="firebase_crashlytics_collection_enabled" android:value="${telemetryEnabled}" />
 
         <!-- Hands the shared ticket image to the app the player shares it with. -->
         <provider

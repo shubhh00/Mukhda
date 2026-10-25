@@ -1,7 +1,5 @@
 package com.mukhda.data.search
 
-import kotlinx.serialization.json.Json
-
 /** In-memory stand-in for Room. `matchPrefix` mimics FTS4: every `term*` prefixes a title or film word. */
 class FakeSearchIndexDao : SearchIndexDao {
     private val songs = mutableListOf<SearchSongEntity>()
@@ -37,23 +35,12 @@ class FakeSearchIndexDao : SearchIndexDao {
     }
 }
 
-class FakeSearchIndexAsset : SearchIndexAsset {
-    private val files = mutableMapOf<Int, String>()
-    var reads = 0
-        private set
+/** Hands over [dao], or fails to open when [openError] is set. */
+class FakeSearchIndexStore(private val dao: SearchIndexDao) : SearchIndexStore {
+    var openError: Exception? = null
 
-    fun bundle(version: Int, vararg songs: SearchSongDto) {
-        files[version] = Json.encodeToString(SearchIndexDto.serializer(), SearchIndexDto(songs.toList()))
-    }
-
-    fun bundleRaw(version: Int, json: String) {
-        files[version] = json
-    }
-
-    override fun latestVersion(): Int? = files.keys.maxOrNull()
-
-    override fun read(version: Int): String {
-        reads++
-        return files.getValue(version)
+    override suspend fun dao(): SearchIndexDao {
+        openError?.let { throw it }
+        return dao
     }
 }

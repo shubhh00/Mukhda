@@ -4,7 +4,7 @@ import com.mukhda.domain.search.SearchNormalizer
 import com.mukhda.domain.search.SearchSong
 import kotlinx.serialization.Serializable
 
-/** Shape of `assets/search_index/v<N>.json`. The version lives in the file name. */
+/** The index as JSON, as the curation tool writes it (`search_index.json`); tests build entities from it. */
 @Serializable
 data class SearchIndexDto(val songs: List<SearchSongDto>)
 

@@ -4,6 +4,8 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaTheme
 import com.mukhda.domain.model.Tier
@@ -20,6 +22,19 @@ internal fun Tier.color(): Color = with(MukhdaTheme.colors) {
         Tier.LEGEND -> tierLegend
     }
 }
+
+/**
+ * The tier's ink for small text on paper. Easy's marigold and Medium's saffron are too light to
+ * read there, so they're deepened toward ink; the darker tiers are used as they are.
+ */
+@Composable
+@ReadOnlyComposable
+internal fun Tier.textColor(): Color {
+    val color = color()
+    return if (color.luminance() > TEXT_LUMINANCE_LIMIT) lerp(color, MukhdaTheme.colors.ink, 0.45f) else color
+}
+
+private const val TEXT_LUMINANCE_LIMIT = 0.2f
 
 @get:StringRes
 internal val Tier.labelRes: Int

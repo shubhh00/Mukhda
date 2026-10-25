@@ -55,8 +55,12 @@ private const val WORDS_OUT_MS = 220
 private const val PART_MS = 900
 /** Long enough to read the line, even when the show is already in. */
 private const val MIN_HOLD_MS = 700L
-/** A slow network never keeps the curtain down: the game shows its own loading layout. */
-private const val MAX_HOLD_MS = 2_500L
+/**
+ * Long enough for a first launch (sign-in, and a server waking from idle takes a few seconds), so
+ * the game appears whole. A slower network doesn't keep the curtain down: the game shows its own
+ * loading layout after this.
+ */
+private const val MAX_HOLD_MS = 6_000L
 /** How far each half bunches up as it's drawn off. */
 private const val GATHER = 0.45f
 private val PelmetDepth = 28.dp

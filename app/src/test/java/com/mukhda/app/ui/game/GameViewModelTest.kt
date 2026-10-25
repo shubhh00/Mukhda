@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import assertk.assertThat
 import assertk.assertions.containsExactly
+import assertk.assertions.containsExactlyInAnyOrder
 import assertk.assertions.hasSize
 import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
@@ -21,6 +22,7 @@ import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
+import com.mukhda.domain.telemetry.TelemetryEvent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -56,7 +58,11 @@ class GameViewModelTest {
 
     private val history = FakeRoundHistory()
 
-    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) = GameViewModel(handle, show, songIndex, player, history)
+    private val telemetry = FakeTelemetry()
+    private val flags = FakeFeatureFlags()
+
+    private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) =
+        GameViewModel(handle, show, songIndex, player, history, telemetry, flags)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -383,6 +389,29 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `the housefull calendar opens with the played days, the best run and today's show date`() = runTest(dispatcher) {
+        val today = show.date
+        history.rounds.value = listOf(
+            Streak.DayRound(today.minusDays(1), triesUsed = 2),
+            // An older run of three, longer than the current one.
+            Streak.DayRound(today.minusDays(5), triesUsed = 1),
+            Streak.DayRound(today.minusDays(6), triesUsed = 1),
+            Streak.DayRound(today.minusDays(7), triesUsed = 3),
+        )
+        val vm = viewModel()
+        vm.onAction(GameAction.OnStreakClick)
+        with(vm.state.value) {
+            assertThat(isHousefullOpen).isTrue()
+            assertThat(streak).isEqualTo(1)
+            assertThat(bestStreak).isEqualTo(3)
+            assertThat(playedDays).containsExactlyInAnyOrder(today.minusDays(1), today.minusDays(5), today.minusDays(6), today.minusDays(7))
+            assertThat(showDate).isEqualTo(today)
+        }
+        vm.onAction(GameAction.OnHousefullClose)
+        assertThat(vm.state.value.isHousefullOpen).isFalse()
+    }
+
+    @Test
     fun `a round opened but never tried doesn't count for the streak`() = runTest(dispatcher) {
         history.rounds.value = listOf(Streak.DayRound(show.date.minusDays(1), triesUsed = 0))
         assertThat(viewModel().state.value.streak).isEqualTo(0)
@@ -474,6 +503,43 @@ class GameViewModelTest {
         assertThat(vm.state.value.isTicketOpen).isTrue()
         vm.onAction(GameAction.OnTicketClose)
         assertThat(vm.state.value.isTicketOpen).isFalse()
+    }
+
+    @Test
+    fun `telemetry hears about clips, finished rounds, the ticket and the calendar, never a song`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnPlayClick)
+        vm.onAction(GameAction.OnPlayClick)
+        repeat(5) { vm.onAction(GameAction.OnSkipClick) }
+        vm.onAction(GameAction.OnShareTicketClick)
+        vm.onAction(GameAction.OnTicketShared)
+        vm.onAction(GameAction.OnStreakClick)
+
+        val tier = vm.state.value.selectedTier
+        val verdict = vm.state.value.round!!.verdict!!
+        assertThat(telemetry.events).containsExactly(
+            TelemetryEvent.ClipPlayed(tier, 0),
+            TelemetryEvent.RoundFinished(tier, verdict),
+            TelemetryEvent.TicketOpened(tier, verdict),
+            TelemetryEvent.TicketShared(tier, verdict),
+            TelemetryEvent.HousefullOpened(vm.state.value.streak),
+        )
+        assertThat(telemetry.context["show_date"]).isEqualTo(show.date.toString())
+    }
+
+    @Test
+    fun `a show that won't load is reported as a handled error`() = runTest(dispatcher) {
+        show.loadError = DataError.Network.NO_INTERNET
+        viewModel()
+        assertThat(telemetry.errors).containsExactly("load_show" to DataError.Network.NO_INTERNET)
+    }
+
+    @Test
+    fun `top percent follows the switch from the server`() = runTest(dispatcher) {
+        val vm = viewModel()
+        assertThat(vm.state.value.showTopPercent).isFalse()
+        flags.showTopPercent.value = true
+        assertThat(vm.state.value.showTopPercent).isTrue()
     }
 
     @Test

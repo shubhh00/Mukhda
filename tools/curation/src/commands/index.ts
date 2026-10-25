@@ -1,10 +1,11 @@
-import { mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { ROOT, paths } from "../config.ts";
 import { ItunesClient } from "../itunes.ts";
 import { filmMatches } from "../match.ts";
 import {
   type AlbumSource,
+  type IndexSong,
   type PoolSong,
   assembleIndex,
   filmIdOf,
@@ -12,9 +13,10 @@ import {
   mostCommon,
   songIdOf,
 } from "../search-index.ts";
+import { readSearchDbSongs, writeSearchDb } from "../search-db.ts";
 import type { VerifiedFile } from "./verify.ts";
 
-/** Where the app reads bundled indexes from: assets/search_index/v<N>.json. */
+/** Where the app reads its bundled index from: assets/search_index/v<N>.db. */
 const APP_INDEX_DIR = path.resolve(ROOT, "..", "..", "data", "src", "main", "assets", "search_index");
 
 async function loadPool(): Promise<PoolSong[]> {
@@ -107,23 +109,54 @@ export async function writeSearchIndex(): Promise<void> {
   await publishToApp(body);
 }
 
+/** The songs last bundled into the app, to tell whether a new index changed anything. */
+const BUNDLED = path.join(paths.index, "bundled.json");
+
 /**
- * Bundles the index as assets/search_index/v<N>.json. Installed apps only re-import a higher N,
- * so N goes up only when the songs change, and only the newest file is kept in the app.
+ * Bundles the index as assets/search_index/v<N>.db, a ready-built database the app copies on
+ * first launch. Installed apps only replace their index for a higher N, so N goes up only when the
+ * songs change, and only the newest file is kept in the app.
  */
 async function publishToApp(body: string): Promise<void> {
-  await mkdir(APP_INDEX_DIR, { recursive: true });
-  const versions = (await readdir(APP_INDEX_DIR))
-    .map((f) => Number(/^v(\d+)\.json$/.exec(f)?.[1]))
-    .filter((v) => Number.isInteger(v))
-    .sort((a, b) => a - b);
-  const latest = versions.at(-1);
-  if (latest !== undefined && (await readFile(path.join(APP_INDEX_DIR, `v${latest}.json`), "utf8")) === body) {
-    console.log(`Songs unchanged; the app keeps assets/search_index/v${latest}.json.`);
+  const latest = await bundledVersion();
+  if (latest !== undefined && (await readFile(BUNDLED, "utf8").catch(() => "")) === body) {
+    console.log(`Songs unchanged; the app keeps assets/search_index/v${latest}.db.`);
     return;
   }
-  const next = (latest ?? 0) + 1;
-  await writeFile(path.join(APP_INDEX_DIR, `v${next}.json`), body);
-  for (const old of versions) await rm(path.join(APP_INDEX_DIR, `v${old}.json`));
-  console.log(`Wrote data/index/search_index.json and the app's assets/search_index/v${next}.json.`);
+  await bundle(body, (latest ?? 0) + 1);
+}
+
+/** The highest version in the app's assets, .db or the older .json. */
+async function bundledVersion(): Promise<number | undefined> {
+  await mkdir(APP_INDEX_DIR, { recursive: true });
+  const versions = (await readdir(APP_INDEX_DIR)).map((f) => Number(/^v(\d+)\.(db|json)$/.exec(f)?.[1])).filter(Number.isInteger);
+  return versions.length ? Math.max(...versions) : undefined;
+}
+
+async function bundle(body: string, version: number): Promise<void> {
+  const { songs } = JSON.parse(body) as { songs: IndexSong[] };
+  // Built beside the working data, then moved in, so a failed build leaves the app's index alone.
+  await mkdir(paths.index, { recursive: true });
+  const built = path.join(paths.index, `v${version}.db`);
+  await writeSearchDb(built, songs, version);
+  // Moved in first (replacing a same-version file), then the others removed: the app's assets
+  // always hold an index, even if a step fails.
+  const name = `v${version}.db`;
+  await rename(built, path.join(APP_INDEX_DIR, name));
+  for (const old of await readdir(APP_INDEX_DIR)) if (old !== name) await rm(path.join(APP_INDEX_DIR, old));
+  await writeFile(BUNDLED, body);
+  console.log(`Wrote the app's assets/search_index/v${version}.db (${songs.length} songs).`);
+}
+
+/**
+ * Rebuilds the bundled database at the same version, after the app's search schema changes. The
+ * songs come from the bundled file itself (an older v<N>.json, or v<N>.db), so this works from a
+ * fresh checkout, where the curation data isn't present.
+ */
+export async function rebuildSearchDb(): Promise<void> {
+  const version = await bundledVersion();
+  if (version === undefined) throw new Error("No index bundled in the app yet. Run `npm run index` first.");
+  const legacy = await readFile(path.join(APP_INDEX_DIR, `v${version}.json`), "utf8").catch(() => null);
+  const songs = legacy ? (JSON.parse(legacy) as { songs: IndexSong[] }).songs : readSearchDbSongs(path.join(APP_INDEX_DIR, `v${version}.db`));
+  await bundle(JSON.stringify({ songs }, null, 0), version);
 }

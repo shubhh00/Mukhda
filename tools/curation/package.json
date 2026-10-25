@@ -13,9 +13,11 @@
     "report": "node --disable-warning=ExperimentalWarning src/cli.ts report",
     "review": "node --disable-warning=ExperimentalWarning src/cli.ts review",
     "index": "node --disable-warning=ExperimentalWarning src/cli.ts index",
+    "index-db": "node --disable-warning=ExperimentalWarning src/cli.ts index-db",
     "youtube": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts youtube",
     "lastfm": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts lastfm",
     "tier": "node --disable-warning=ExperimentalWarning src/cli.ts tier",
+    "vocals": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts vocals",
     "publish": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts publish",
     "typecheck": "tsc",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\""

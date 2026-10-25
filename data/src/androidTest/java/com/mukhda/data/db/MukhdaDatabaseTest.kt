@@ -11,6 +11,7 @@ import assertk.assertions.isEmpty
 import assertk.assertions.isEqualTo
 import com.mukhda.data.round.TryEntity
 import com.mukhda.data.round.TryState
+import com.mukhda.data.search.SearchDatabase
 import com.mukhda.data.search.SearchSongDto
 import com.mukhda.data.search.toEntity
 import kotlinx.coroutines.test.runTest
@@ -24,24 +25,27 @@ import org.junit.runner.RunWith
 class MukhdaDatabaseTest {
 
     private lateinit var db: MukhdaDatabase
+    private lateinit var search: SearchDatabase
 
     @Before
     fun setUp() {
-        db = Room.inMemoryDatabaseBuilder(
-            ApplicationProvider.getApplicationContext(),
-            MukhdaDatabase::class.java,
-        ).build()
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        db = Room.inMemoryDatabaseBuilder(context, MukhdaDatabase::class.java).build()
+        search = Room.inMemoryDatabaseBuilder(context, SearchDatabase::class.java).build()
     }
 
     @After
-    fun tearDown() = db.close()
+    fun tearDown() {
+        db.close()
+        search.close()
+    }
 
     private fun song(id: String, title: String, film: String) =
         SearchSongDto(id, title, "f_" + film.lowercase(), film, 2013).toEntity()
 
     @Test
     fun ftsMatchesEveryTermAsAWordPrefixAcrossTitleAndFilm() = runTest {
-        val dao = db.searchIndexDao()
+        val dao = search.searchIndexDao()
         dao.replaceIndex(
             listOf(
                 song("s1", "Sawaar Loon", "Lootera"),
@@ -59,7 +63,7 @@ class MukhdaDatabaseTest {
 
     @Test
     fun replacingTheIndexDropsOldSongsAndKeepsFtsInSync() = runTest {
-        val dao = db.searchIndexDao()
+        val dao = search.searchIndexDao()
         dao.replaceIndex(listOf(song("s1", "Tum Hi Ho", "Aashiqui 2")), version = 1)
         dao.replaceIndex(listOf(song("s2", "Kesariya", "Brahmastra Part One: Shiva")), version = 2)
 

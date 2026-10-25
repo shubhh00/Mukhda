@@ -32,6 +32,7 @@ import com.mukhda.domain.DataError
 import com.mukhda.domain.EmptyOutcome
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.audio.Preview
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -256,6 +257,13 @@ class Media3ClipPlayer @Inject constructor(
     /** Woken long enough ago to be fully on, and not yet back in standby. */
     private fun isSpeakerAwake(now: Long): Boolean =
         now - awakeSince >= SPEAKER_WAKE_MS && now - lastSoundAt <= SPEAKER_COLD_AFTER_MS
+
+    override fun progress(): ClipProgress? {
+        val player = player?.takeIf { it.isPlaying } ?: return null
+        // During the warm-up silence the clip hasn't started.
+        if (player.currentMediaItemIndex != CLIP_INDEX) return ClipProgress(playedMs = 0, lengthMs = null)
+        return ClipProgress(playedMs = player.currentPosition, lengthMs = player.duration.takeIf { it != C.TIME_UNSET })
+    }
 
     override fun isVolumeLow(): Boolean {
         val audio = context.getSystemService(AudioManager::class.java) ?: return false

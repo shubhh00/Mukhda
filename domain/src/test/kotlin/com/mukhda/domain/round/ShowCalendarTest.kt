@@ -48,6 +48,14 @@ class ShowCalendarTest {
     }
 
     @Test
+    fun `best run is the longest run of played days, broken or not`() {
+        val played = setOf(oct12, oct12.minusDays(1)) + (5L..8L).map { oct12.minusDays(it) }
+        assertThat(Streak.best(played)).isEqualTo(4)
+        assertThat(Streak.best(emptySet())).isEqualTo(0)
+        assertThat(Streak.best(setOf(oct12))).isEqualTo(1)
+    }
+
+    @Test
     fun `missing a whole day breaks the streak`() {
         assertThat(Streak.current(setOf(oct12.minusDays(2), oct12.minusDays(3)), oct12)).isEqualTo(0)
     }
