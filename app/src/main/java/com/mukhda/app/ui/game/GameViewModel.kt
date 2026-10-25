@@ -100,8 +100,7 @@ class GameViewModel @Inject constructor(
     private var endedDate: LocalDate? = null
     /** Times the old show came back after its end; capped, so a lagging server isn't asked forever. */
     private var rolloverRetries = 0
-    private var loadJob: Job? = null
-    /** The connection came back while [loadJob] was out: if that load fails, it's tried again. */
+    /** The connection came back while the show was loading: if that load fails, it's tried again. */
     private var reloadIfLoadFails = false
 
     init {
@@ -126,7 +125,8 @@ class GameViewModel @Inject constructor(
                         _state.value.loadError != null -> loadShow()
                         // A load still out may yet fail for the connection it started without:
                         // it's tried again once it's back, rather than a second load racing it.
-                        loadJob?.isActive == true -> reloadIfLoadFails = true
+                        // Only the show itself counts, not the clips downloading after it.
+                        _state.value.isLoading -> reloadIfLoadFails = true
                         sending.isNotEmpty() -> resendNow()
                     }
                     // Clips that didn't finish downloading before the drop: ready them now.
@@ -185,7 +185,7 @@ class GameViewModel @Inject constructor(
 
     private fun loadShow() {
         reloadIfLoadFails = false
-        loadJob = viewModelScope.launch {
+        viewModelScope.launch {
             _state.update { it.copy(isLoading = true, loadError = null) }
             showRepository.todaysShow()
                 .onSuccess { loaded ->

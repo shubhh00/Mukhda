@@ -615,6 +615,19 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `back online after the show loaded, a waiting try goes at once even while clips still download`() = runTest(dispatcher) {
+        player.cacheGate = CompletableDeferred()
+        show.nextTryError = TryError.Data(DataError.Network.NO_INTERNET)
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        vm.onAction(GameAction.OnSkipClick)
+        val loadsBefore = show.loads
+        connectivity.isOnline.value = true
+        assertThat(show.loads).isEqualTo(loadsBefore + 1)
+        assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
     fun `a load that fails while still offline isn't tried again until the connection is back`() = runTest(dispatcher) {
         val gate = CompletableDeferred<Unit>()
         show.showGate = gate

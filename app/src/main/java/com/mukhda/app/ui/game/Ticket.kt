@@ -148,16 +148,36 @@ fun TicketOverlay(ticket: TicketUi, onAction: (GameAction) -> Unit) {
         shareTicket(context, image, shareText)
         onAction(GameAction.OnTicketShared)
     }
+    // One share at a time: a second tear, or Share, while one is under way does nothing.
+    val shareButton: () -> Unit = {
+        if (!tear.sharing) {
+            tear.sharing = true
+            scope.launch {
+                try {
+                    share()
+                } finally {
+                    tear.sharing = false
+                }
+            }
+        }
+    }
     // Torn far enough: the stub falls away, the share sheet opens, and the ticket is whole again
     // for next time.
     val finishTear: () -> Unit = {
-        scope.launch {
-            tear.torn.snapTo(1f)
-            if (animationsEnabled) tear.fall.animateTo(1f, tween(STUB_FALL_MS, easing = FastOutLinearInEasing))
-            share()
-            delay(STUB_BACK_DELAY_MS)
-            tear.fall.snapTo(0f)
-            tear.torn.snapTo(0f)
+        if (!tear.sharing) {
+            tear.sharing = true
+            scope.launch {
+                try {
+                    tear.torn.snapTo(1f)
+                    if (animationsEnabled) tear.fall.animateTo(1f, tween(STUB_FALL_MS, easing = FastOutLinearInEasing))
+                    share()
+                    delay(STUB_BACK_DELAY_MS)
+                    tear.fall.snapTo(0f)
+                    tear.torn.snapTo(0f)
+                } finally {
+                    tear.sharing = false
+                }
+            }
         }
     }
     val tearGestures = Modifier.pointerInput(Unit) {
@@ -166,22 +186,28 @@ fun TicketOverlay(ticket: TicketUi, onAction: (GameAction) -> Unit) {
         var ticks = 0
         // The tear starts from the end the finger moves away from, decided by its first move.
         var sideChosen = false
+        // A drag begun while a share is under way is ignored from start to end.
+        var ignoring = false
         detectDragGestures(
             onDragStart = {
+                ignoring = tear.sharing
                 start = it
                 ticks = 0
                 // A fresh tear picks its side again; a pull straight down tears from the left.
                 sideChosen = tear.torn.value > 0f
-                if (!sideChosen) tear.fromRight = false
+                if (!sideChosen && !ignoring) tear.fromRight = false
             },
             onDragEnd = {
-                if (tear.torn.value >= TEAR_ENOUGH) finishTear()
-                else scope.launch { tear.torn.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium)) }
+                when {
+                    ignoring -> Unit
+                    tear.torn.value >= TEAR_ENOUGH -> finishTear()
+                    else -> scope.launch { tear.torn.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium)) }
+                }
             },
-            onDragCancel = { scope.launch { tear.torn.animateTo(0f) } },
+            onDragCancel = { if (!ignoring && !tear.sharing) scope.launch { tear.torn.animateTo(0f) } },
         ) { change, _ ->
             change.consume()
-            if (tear.fall.value > 0f) return@detectDragGestures
+            if (ignoring || tear.sharing) return@detectDragGestures
             // Either along the line, from wherever the finger started and whichever way it goes,
             // or straight down.
             val dx = change.position.x - start.x
@@ -249,7 +275,7 @@ fun TicketOverlay(ticket: TicketUi, onAction: (GameAction) -> Unit) {
                 text = stringResource(R.string.share),
                 enabled = true,
                 filled = true,
-                onClick = { scope.launch { share() } },
+                onClick = shareButton,
                 modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             )
             Text(
@@ -269,6 +295,8 @@ class StubTear {
     val fall = Animatable(0f)
     /** Torn from the right end (the finger went left), hinged at the left; otherwise the reverse. */
     var fromRight by mutableStateOf(false)
+    /** A share is under way, by tear or by button; until it's done, neither starts another. */
+    var sharing = false
 }
 
 /** "YOUR TICKET FOR TODAY" as a poster's billing line: ink caps between rules and diamonds. */

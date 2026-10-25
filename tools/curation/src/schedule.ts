@@ -156,7 +156,14 @@ export function replaceSongs(
     const film = filmOf.get(songId);
     if (film) filmDays.set(film, [...(filmDays.get(film) ?? []), n]);
   };
-  for (const d of days) for (const t of TIERS) noteFilm(d.tiers[t].songId, dayNumber(d.date));
+  // Only songs that stay: one about to be replaced takes its film with it. Replacements are noted
+  // as they're picked.
+  for (const d of days) {
+    for (const t of TIERS) {
+      if (d.date >= from && isOut(d.tiers[t].songId)) continue;
+      noteFilm(d.tiers[t].songId, dayNumber(d.date));
+    }
+  }
 
   const byTier = Map.groupBy(songs.filter((s) => !isOut(s.songId)), (s) => s.tier);
   const out: Replacement[] = [];
@@ -169,10 +176,11 @@ export function replaceSongs(
       for (const slot of ["songId", "backupSongId"] as const) {
         const current = tiers[tier][slot];
         if (!isOut(current)) continue;
-        // The day's other films: every other main and backup.
+        // The day's other films: every other main and backup that stays or was already picked; a
+        // slot still waiting to be replaced doesn't hold on to its film.
         const filmsToday = new Set(
           TIERS.flatMap((other) => (["songId", "backupSongId"] as const).map((s) => [other, s] as const))
-            .filter(([other, s]) => !(other === tier && s === slot))
+            .filter(([other, s]) => !(other === tier && s === slot) && !isOut(tiers[other][s]))
             .map(([other, s]) => filmOf.get(tiers[other][s])),
         );
         const fits = (s: SchedulableSong) =>

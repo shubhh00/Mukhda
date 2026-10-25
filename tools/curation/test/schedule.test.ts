@@ -121,6 +121,42 @@ test("replaceSongs swaps rejected songs on later days only, within the tier and 
   assert.deepEqual(replaceSongs(songs, days, (id) => out.has(id), "2026-10-05", 1), changes);
 });
 
+/** One hand-made day: every tier's main and backup, each from its own film unless [films] says. */
+function handDay(date: string, mains: Partial<Record<(typeof TIERS)[number], string>> = {}) {
+  return {
+    date,
+    showNo: 1,
+    tiers: Object.fromEntries(TIERS.map((t) => [t, { songId: mains[t] ?? `${date}_${t}_main`, backupSongId: `${date}_${t}_backup` }])),
+  } as Parameters<typeof replaceSongs>[1][number];
+}
+
+test("replaceSongs lets songs being replaced give up their films to each other's replacements", () => {
+  // Easy's song from film A and Hard's from film B both go. The only Easy song left is from film
+  // B, the only Hard one from film A: swapped over, the day still has each film once.
+  const day = handDay("2026-10-10", { EASY: "e_out", HARD: "h_out" });
+  const songs: SchedulableSong[] = [
+    { songId: "e_out", filmId: "A", composer: "c1", tier: "EASY", year: 2020 },
+    { songId: "h_out", filmId: "B", composer: "c2", tier: "HARD", year: 2020 },
+    { songId: "e_new", filmId: "B", composer: "c3", tier: "EASY", year: 2020 },
+    { songId: "h_new", filmId: "A", composer: "c4", tier: "HARD", year: 2020 },
+  ];
+  const changes = replaceSongs(songs, [day], (id) => id.endsWith("_out"), "2026-10-10", 1);
+  assert.deepEqual(changes.map((c) => [c.tier, c.to]), [["EASY", "e_new"], ["HARD", "h_new"]]);
+});
+
+test("replaceSongs keeps films a week apart from the songs that stay, not from those that go", () => {
+  // Film A leaves day 10 with its song, so a replacement two days later may use film A.
+  const days = [handDay("2026-10-10", { EASY: "e_out" }), handDay("2026-10-12", { HARD: "h_out" })];
+  const songs: SchedulableSong[] = [
+    { songId: "e_out", filmId: "A", composer: "c1", tier: "EASY", year: 2020 },
+    { songId: "h_out", filmId: "B", composer: "c2", tier: "HARD", year: 2020 },
+    { songId: "e_new", filmId: "C", composer: "c3", tier: "EASY", year: 2020 },
+    { songId: "h_new", filmId: "A", composer: "c4", tier: "HARD", year: 2020 },
+  ];
+  const changes = replaceSongs(songs, days, (id) => id.endsWith("_out"), "2026-10-10", 1);
+  assert.deepEqual(changes.map((c) => [c.date, c.to]), [["2026-10-10", "e_new"], ["2026-10-12", "h_new"]]);
+});
+
 test("replaceSongs never puts a film twice on a day, even when it fills several of the day's slots", () => {
   // Films shared across tiers, as in a real catalogue: song i of every tier is from film i.
   const songs = TIERS.flatMap((tier) =>

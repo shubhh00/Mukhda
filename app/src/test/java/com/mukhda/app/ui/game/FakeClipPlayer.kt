@@ -6,6 +6,7 @@ import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
 import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.audio.Preview
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 
 /** Plays nothing: a clip "lasts" its length in virtual time. */
@@ -20,7 +21,11 @@ class FakeClipPlayer : ClipPlayer {
     var speakerWakes = 0
         private set
 
+    /** When set, downloads wait for it, as a slow one would. */
+    var cacheGate: CompletableDeferred<Unit>? = null
+
     override suspend fun cache(previews: Collection<Preview>): EmptyOutcome<DataError> {
+        cacheGate?.await()
         cached += previews
         return Outcome.Success(Unit)
     }
