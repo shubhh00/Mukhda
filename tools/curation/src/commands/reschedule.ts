@@ -45,6 +45,11 @@ export async function reschedule(options: RescheduleOptions): Promise<void> {
     const ref = db.doc(`schedule/${date}`);
     await db.runTransaction(async (tx) => {
       const tiers = (await tx.get(ref)).get("tiers") as Record<string, Record<string, string>>;
+      // From 23:55 the server settles tomorrow's songs to send their clips ahead: a day it has
+      // settled since it was read is live now, and left as it is.
+      if (Object.values(tiers).some((t) => t.activeSongId !== undefined)) {
+        throw new Error(`${date} went live meanwhile; nothing written for that day.`);
+      }
       for (const c of dayChanges) {
         if (tiers[c.tier]?.[c.slot] !== c.from) throw new Error(`${date} ${c.tier} ${c.slot} changed meanwhile; nothing written for that day.`);
       }

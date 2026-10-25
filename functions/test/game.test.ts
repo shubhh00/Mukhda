@@ -212,6 +212,18 @@ test("no next show scheduled is no next clips, not an error", async () => {
   assert.equal((await getShow(db(), UID, late, noLookup)).next, null);
 });
 
+test("a next show that can't be read leaves today's show as it is", async () => {
+  // Tomorrow points at songs that don't exist: reading them fails, today's show must not.
+  const tiers = Object.fromEntries(
+    ["EASY", "MEDIUM", "HARD", "EXPERT", "LEGEND"].map((tier) => [tier, { songId: "s_missing", backupSongId: "s_missing_too" }]),
+  );
+  await db().doc("schedule/2026-10-13").set({ showNo: 13, tiers });
+  const late = new Date("2026-10-12T18:26:00Z");
+  const show = await getShow(db(), UID, late, noLookup);
+  assert.equal(show.date, DATE);
+  assert.equal(show.next, null);
+});
+
 test("after midnight, a show says nothing about yesterday's songs", async () => {
   await skip(); // HARD started yesterday, never finished
   await seedShow(db(), "2026-10-13", 13);

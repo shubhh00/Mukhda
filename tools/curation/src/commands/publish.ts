@@ -183,7 +183,8 @@ export async function publish(options: PublishOptions): Promise<void> {
   for (const day of days) await db.doc(`schedule/${day.date}`).create({ showNo: day.showNo, tiers: day.tiers });
 
   console.log(`Wrote ${songDocs.length} songs (${starts} start before the singing), ${index.length} catalogue entries, and ${days.length} days: ${days[0]!.date} (Show No. ${days[0]!.showNo}) to ${days.at(-1)!.date}.`);
-  const perTier = Map.groupBy(answers, (t) => t.tier);
+  // Only songs that can still be scheduled: those whose clips never reach a voice can't.
+  const perTier = Map.groupBy(schedulable, (t) => t.tier);
   const used = existing.length + days.length;
   console.log(`Songs left per tier at a song a day: ${TIERS.map((t) => `${t} ${(perTier.get(t)?.length ?? 0) - used}`).join(", ")}.`);
 }

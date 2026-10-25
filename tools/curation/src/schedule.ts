@@ -163,15 +163,17 @@ export function replaceSongs(
   for (const day of [...days].sort((a, b) => a.date.localeCompare(b.date))) {
     if (day.date < from) continue;
     const n = dayNumber(day.date);
+    // The day's slots as they stand, picks included, so each pick sees the films of those before it.
+    const tiers = Object.fromEntries(TIERS.map((t) => [t, { ...day.tiers[t] }])) as ScheduledDay["tiers"];
     for (const [t, tier] of TIERS.entries()) {
       for (const slot of ["songId", "backupSongId"] as const) {
-        const current = day.tiers[tier][slot];
+        const current = tiers[tier][slot];
         if (!isOut(current)) continue;
         // The day's other films: every other main and backup.
         const filmsToday = new Set(
           TIERS.flatMap((other) => (["songId", "backupSongId"] as const).map((s) => [other, s] as const))
             .filter(([other, s]) => !(other === tier && s === slot))
-            .map(([other, s]) => filmOf.get(day.tiers[other][s])),
+            .map(([other, s]) => filmOf.get(tiers[other][s])),
         );
         const fits = (s: SchedulableSong) =>
           !used.has(s.songId) &&
@@ -181,6 +183,7 @@ export function replaceSongs(
         const pick = weightedOrder(byTier.get(tier) ?? [], (s) => drawWeight(s, year), seed * 7919 + n * 31 + t).find(fits);
         if (!pick) throw new Error(`No ${tier} song fits to replace ${current} on ${day.date}`);
         used.add(pick.songId);
+        tiers[tier][slot] = pick.songId;
         if (slot === "songId") noteFilm(pick.songId, n);
         out.push({ date: day.date, tier, slot, from: current, to: pick.songId });
       }

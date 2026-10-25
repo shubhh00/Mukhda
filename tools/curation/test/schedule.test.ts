@@ -120,3 +120,22 @@ test("replaceSongs swaps rejected songs on later days only, within the tier and 
   // Same seed, same picks.
   assert.deepEqual(replaceSongs(songs, days, (id) => out.has(id), "2026-10-05", 1), changes);
 });
+
+test("replaceSongs never puts a film twice on a day, even when it fills several of the day's slots", () => {
+  // Films shared across tiers, as in a real catalogue: song i of every tier is from film i.
+  const songs = TIERS.flatMap((tier) =>
+    Array.from({ length: 60 }, (_, i) => ({ songId: `s_${tier}_${i}`, filmId: `f_${i}`, composer: `Composer ${i}`, tier, year: 2020 })),
+  );
+  for (let seed = 1; seed <= 20; seed++) {
+    const days = schedule(songs, [], "2026-10-01", 8, "2026-10-01", seed);
+    // Every slot of the last three days is rejected, so each of those days gets ten picks.
+    const out = new Set(days.slice(5).flatMap((d) => TIERS.flatMap((t) => [d.tiers[t].songId, d.tiers[t].backupSongId])));
+    const changes = replaceSongs(songs, days, (id) => out.has(id), "2026-10-06", seed);
+    const filmOf = new Map(songs.map((s) => [s.songId, s.filmId]));
+    for (const day of days.slice(5)) {
+      const picks = changes.filter((c) => c.date === day.date).map((c) => filmOf.get(c.to));
+      assert.equal(picks.length, 10);
+      assert.equal(new Set(picks).size, picks.length, `seed ${seed}: a film twice on ${day.date}`);
+    }
+  }
+});

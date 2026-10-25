@@ -186,7 +186,9 @@ async function nextShow(db: Firestore, date: string, now: Date, lookup: PreviewL
     }));
     return { date: tomorrow, previews };
   } catch (error) {
-    if (error instanceof NoShowError) return null;
-    throw error;
+    // Tomorrow's clips are only a head start: whatever goes wrong with them, today's show still
+    // goes out, and the app fetches tomorrow's at midnight as it would anyway.
+    if (!(error instanceof NoShowError)) logger.warn("next show's clips unavailable", { tomorrow, error: String(error) });
+    return null;
   }
 }
