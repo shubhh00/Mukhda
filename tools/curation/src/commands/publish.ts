@@ -39,7 +39,7 @@ async function projectId(): Promise<string> {
  * The emulator unless [production] is asked for, and then only with credentials and no emulator
  * set, so a test run can never write to the live game by accident.
  */
-async function connect(production: boolean): Promise<{ db: Firestore; where: string }> {
+export async function connect(production: boolean): Promise<{ db: Firestore; where: string }> {
   const project = await projectId();
   if (production) {
     if (process.env.FIRESTORE_EMULATOR_HOST) throw new Error("FIRESTORE_EMULATOR_HOST is set; unset it to publish to production.");
@@ -120,6 +120,16 @@ export async function publish(options: PublishOptions): Promise<void> {
     }
   }
   const neverChecked = Timestamp.fromMillis(0);
+  // Just before the singing (see vocals/find_vocal_start.py), but only when the finder analysed the
+  // very preview being published: a start measured on other audio could land anywhere. Otherwise a
+  // start already on the server stays, else 0.
+  let stale = 0;
+  const clipStart = (songId: string, previewUrl: string): number => {
+    const found = vocalStarts.get(songId);
+    if (found?.previewUrl === previewUrl) return found.clipStartMs;
+    if (found) stale++;
+    return found ? 0 : (publishedStarts.get(songId) ?? 0);
+  };
   const songDocs: [string, object][] = answers.map((t) => {
     const entry = indexed.get(t.songId)!;
     const track = tracks.get(t.songId)!;
@@ -135,8 +145,7 @@ export async function publish(options: PublishOptions): Promise<void> {
         composer: t.composer,
         previewUrl: published.get(t.songId)?.previewUrl ?? track.previewUrl,
         previewUrlCachedAt: published.get(t.songId)?.previewUrlCachedAt ?? neverChecked,
-        // Just before the singing (see vocals/find_vocal_start.py).
-        startOffsetMs: vocalStarts.get(t.songId)?.clipStartMs ?? publishedStarts.get(t.songId) ?? 0,
+        startOffsetMs: clipStart(t.songId, published.get(t.songId)?.previewUrl ?? track.previewUrl),
         artworkUrl: track.artworkUrl100?.replace("100x100bb", "600x600bb") ?? null,
         appleMusicUrl: track.trackViewUrl ?? null,
         tier: t.tier,
@@ -147,6 +156,7 @@ export async function publish(options: PublishOptions): Promise<void> {
   });
   await writeAll(db, songDocs);
   const starts = songDocs.filter(([, doc]) => (doc as { startOffsetMs: number }).startOffsetMs > 0).length;
+  if (stale > 0) console.log(`${stale} songs' previews changed since the vocal finder ran: they start at 0. Run \`npm run vocals -- --production\` and the finder again.`);
   if (!plan) {
     console.log(`Wrote ${songDocs.length} songs (${starts} start before the singing, the rest at 0). Catalogue and schedule unchanged.`);
     return;

@@ -60,7 +60,7 @@ async function main(): Promise<void> {
         songsOnly: values["songs-only"],
       });
     case "vocals":
-      return writeVocalsList();
+      return writeVocalsList(values.production);
     case "youtube":
       return fetchYoutube();
     case "lastfm":

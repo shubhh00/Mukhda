@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -52,7 +53,17 @@ class BundledSearchIndexStore @Inject constructor(
     private suspend fun open(): SearchDatabase {
         val bundled = checkNotNull(asset.latestVersion()) { "No search index bundled" }
         val opened = build(bundled)
-        if (opened.searchIndexDao().version() == bundled) return opened
+        // Room opens the file on its first query. A file it can't open (corrupt, or from an older
+        // schema) is replaceable data: dropped and copied again from the bundle.
+        val version = try {
+            opened.searchIndexDao().version()
+        } catch (e: CancellationException) {
+            opened.close()
+            throw e
+        } catch (e: Exception) {
+            null
+        }
+        if (version == bundled) return opened
         opened.close()
         context.deleteDatabase(SearchDatabase.NAME)
         return build(bundled)

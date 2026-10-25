@@ -138,8 +138,11 @@ async function bundle(body: string, version: number): Promise<void> {
   // Built beside the working data, then moved in, so a failed build leaves the app's index alone.
   const built = path.join(paths.index, `v${version}.db`);
   await writeSearchDb(built, songs, version);
-  for (const old of await readdir(APP_INDEX_DIR)) await rm(path.join(APP_INDEX_DIR, old));
-  await rename(built, path.join(APP_INDEX_DIR, `v${version}.db`));
+  // Moved in first (replacing a same-version file), then the others removed: the app's assets
+  // always hold an index, even if a step fails.
+  const name = `v${version}.db`;
+  await rename(built, path.join(APP_INDEX_DIR, name));
+  for (const old of await readdir(APP_INDEX_DIR)) if (old !== name) await rm(path.join(APP_INDEX_DIR, old));
   await writeFile(BUNDLED, body);
   console.log(`Wrote the app's assets/search_index/v${version}.db (${songs.length} songs).`);
 }

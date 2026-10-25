@@ -2,8 +2,10 @@
 Finds where the singing starts in each song's iTunes preview, so a clip can start just before it.
 
 Reads a JSON list of {"songId", "previewUrl"} and adds {"vocalStartMs", "clipStartMs",
-"durationMs"} per song to the results file (vocalStartMs is null when the preview has no singing).
-Songs already in the results are skipped, so a run can be stopped and picked up again.
+"durationMs", "previewUrl"} per song to the results file (vocalStartMs is null when the preview
+has no singing). previewUrl is the preview that was analysed: a song whose preview has changed is
+checked again, so a clip start never applies to different audio. Songs already done are skipped,
+so a run can be stopped and picked up again.
 
 The clip starts LEAD_MS before the singing, so the shortest clip is music and the voice comes in
 during the next one; a preview that opens mid-line keeps its start at 0. A clip never starts in
@@ -46,8 +48,10 @@ LEAD_MS = 600
 SILENCE_DB = -40.0
 # The full clip always gets at least this long: a clip never starts later in the preview.
 MIN_FULL_CLIP_MS = 10_000
-# Bumped when the rules change, so the next run checks every song again.
-RULES = 2
+# Bumped when the rules change. A song done under an older version whose vocal start still holds
+# (RULES_SAME_VOCALS) only has its clip start worked out again, from its cached preview.
+RULES = 3
+RULES_SAME_VOCALS = {2}
 
 
 def decode(path: Path) -> np.ndarray:
@@ -108,8 +112,10 @@ def clip_start_ms(vocal_start: int | None, mix: np.ndarray) -> int:
     whole = frame_db(mix.mean(axis=0))
     first, last = start // HOP_MS, vocal_start // HOP_MS
     silent = [i for i in range(first, min(last, len(whole))) if whole[i] < SILENCE_DB]
-    # Start just after the last silent frame before the voice.
-    return (silent[-1] * HOP_MS + FRAME_MS) if silent else start
+    # Start just after the last silent frame before the voice; but the ten-second full clip comes
+    # first, so a start that would pass `latest` stays there, even if that's in the quiet bit.
+    after_silence = (silent[-1] * HOP_MS + FRAME_MS) if silent else start
+    return min(after_silence, latest)
 
 
 def separate(model, wav: np.ndarray, device: str) -> np.ndarray:
@@ -125,10 +131,10 @@ def separate(model, wav: np.ndarray, device: str) -> np.ndarray:
 DOWNLOAD_THREADS = 4
 
 
-def download(song: dict, previews: Path) -> Path:
-    """The song's preview on disk, fetched once."""
+def download(song: dict, previews: Path, stale: bool = False) -> Path:
+    """The song's preview on disk, fetched once; fetched again when [stale] (its URL changed)."""
     path = previews / f"{song['songId']}.m4a"
-    if not path.exists():
+    if stale or not path.exists():
         with urllib.request.urlopen(song["previewUrl"], timeout=30) as response:
             data = response.read()
         path.write_bytes(data)
@@ -146,12 +152,37 @@ def main() -> None:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = get_model("htdemucs")
     model.to(device).eval()
-    todo = [s for s in songs if results.get(s["songId"], {}).get("rules") != RULES]
+
+    # Results from before previewUrl was recorded were analysed from this same list's URLs.
+    for song in songs:
+        done = results.get(song["songId"])
+        if done is not None and "previewUrl" not in done:
+            done["previewUrl"] = song["previewUrl"]
+
+    def analysed(song: dict) -> bool:
+        done = results.get(song["songId"], {})
+        return done.get("previewUrl") == song["previewUrl"]
+
+    # Same preview, rules changed only in where the clip starts: no need to separate vocals again.
+    recheck = [s for s in songs if analysed(s) and results[s["songId"]].get("rules") in RULES_SAME_VOCALS]
+    for song in recheck:
+        done = results[song["songId"]]
+        path = previews / f"{song['songId']}.m4a"
+        if not path.exists():
+            continue
+        wav = decode(path)
+        done["clipStartMs"] = min(clip_start_ms(done["vocalStartMs"], wav), done["vocalStartMs"] or 0)
+        done["rules"] = RULES
+    if recheck:
+        out_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
+        print(f"{len(recheck)} clip starts worked out again under the new rules", flush=True)
+
+    todo = [s for s in songs if not (analysed(s) and results[s["songId"]].get("rules") == RULES)]
     print(f"{len(todo)} to check on {device} ({len(songs) - len(todo)} already done)", flush=True)
 
     # Downloads run ahead on their own threads, so the GPU isn't left waiting on the network.
     pool = ThreadPoolExecutor(max_workers=DOWNLOAD_THREADS)
-    downloads = [pool.submit(download, song, previews) for song in todo]
+    downloads = [pool.submit(download, song, previews, song["songId"] in results) for song in todo]
     for n, (song, fetched) in enumerate(zip(todo, downloads), 1):
         song_id = song["songId"]
         try:
@@ -163,6 +194,7 @@ def main() -> None:
                 "vocalStartMs": vocal_start,
                 "clipStartMs": min(clip_start_ms(vocal_start, wav), vocal_start or 0),
                 "durationMs": wav.shape[1] * 1000 // SAMPLE_RATE,
+                "previewUrl": song["previewUrl"],
                 "rules": RULES,
             }
         except Exception as error:  # One bad preview mustn't stop the run; it's retried next time.
