@@ -20,6 +20,7 @@ leaves in instrumental parts (30-50 dB under the voice) doesn't.
 """
 
 import json
+import os
 import sys
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -131,13 +132,25 @@ def separate(model, wav: np.ndarray, device: str) -> np.ndarray:
 DOWNLOAD_THREADS = 4
 
 
+def write_atomically(path: Path, data: bytes) -> None:
+    """Writes beside [path], then swaps it in: a run stopped mid-write leaves the old file whole."""
+    part = path.with_name(path.name + ".part")
+    part.write_bytes(data)
+    os.replace(part, path)
+
+
+def save(results: dict, out_path: Path) -> None:
+    write_atomically(out_path, json.dumps(results, indent=1).encode("utf-8"))
+
+
 def download(song: dict, previews: Path, stale: bool = False) -> Path:
     """The song's preview on disk, fetched once; fetched again when [stale] (its URL changed)."""
     path = previews / f"{song['songId']}.m4a"
     if stale or not path.exists():
         with urllib.request.urlopen(song["previewUrl"], timeout=30) as response:
             data = response.read()
-        path.write_bytes(data)
+        # Never a half-written preview: one would be reused, and fail, on every later run.
+        write_atomically(path, data)
     return path
 
 
@@ -174,7 +187,7 @@ def main() -> None:
         done["clipStartMs"] = min(clip_start_ms(done["vocalStartMs"], wav), done["vocalStartMs"] or 0)
         done["rules"] = RULES
     if recheck:
-        out_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
+        save(results, out_path)
         print(f"{len(recheck)} clip starts worked out again under the new rules", flush=True)
 
     todo = [s for s in songs if not (analysed(s) and results[s["songId"]].get("rules") == RULES)]
@@ -201,9 +214,9 @@ def main() -> None:
             print(f"{song_id}: {error}", flush=True)
             continue
         if n % 10 == 0 or n == len(todo):
-            out_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
+            save(results, out_path)
             print(f"{n}/{len(todo)}", flush=True)
-    out_path.write_text(json.dumps(results, indent=1), encoding="utf-8")
+    save(results, out_path)
 
 
 if __name__ == "__main__":

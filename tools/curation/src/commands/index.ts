@@ -13,7 +13,7 @@ import {
   mostCommon,
   songIdOf,
 } from "../search-index.ts";
-import { writeSearchDb } from "../search-db.ts";
+import { readSearchDbSongs, writeSearchDb } from "../search-db.ts";
 import type { VerifiedFile } from "./verify.ts";
 
 /** Where the app reads its bundled index from: assets/search_index/v<N>.db. */
@@ -136,6 +136,7 @@ async function bundledVersion(): Promise<number | undefined> {
 async function bundle(body: string, version: number): Promise<void> {
   const { songs } = JSON.parse(body) as { songs: IndexSong[] };
   // Built beside the working data, then moved in, so a failed build leaves the app's index alone.
+  await mkdir(paths.index, { recursive: true });
   const built = path.join(paths.index, `v${version}.db`);
   await writeSearchDb(built, songs, version);
   // Moved in first (replacing a same-version file), then the others removed: the app's assets
@@ -148,13 +149,14 @@ async function bundle(body: string, version: number): Promise<void> {
 }
 
 /**
- * Rebuilds the bundled database at the same version, from the songs last bundled: after the
- * app's search schema changes, or to turn an older bundled v<N>.json into v<N>.db.
+ * Rebuilds the bundled database at the same version, after the app's search schema changes. The
+ * songs come from the bundled file itself (an older v<N>.json, or v<N>.db), so this works from a
+ * fresh checkout, where the curation data isn't present.
  */
 export async function rebuildSearchDb(): Promise<void> {
   const version = await bundledVersion();
   if (version === undefined) throw new Error("No index bundled in the app yet. Run `npm run index` first.");
-  const legacy = path.join(APP_INDEX_DIR, `v${version}.json`);
-  const body = await readFile(legacy, "utf8").catch(() => readFile(BUNDLED, "utf8"));
-  await bundle(body, version);
+  const legacy = await readFile(path.join(APP_INDEX_DIR, `v${version}.json`), "utf8").catch(() => null);
+  const songs = legacy ? (JSON.parse(legacy) as { songs: IndexSong[] }).songs : readSearchDbSongs(path.join(APP_INDEX_DIR, `v${version}.db`));
+  await bundle(JSON.stringify({ songs }, null, 0), version);
 }

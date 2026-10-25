@@ -53,6 +53,11 @@ export async function writeVocalsList(production = false): Promise<void> {
 
 /** The finder's results so far, by songId; empty before its first run. */
 export async function readVocalStarts(): Promise<Map<string, VocalStart>> {
-  const text = await readFile(path.join(paths.vocals, RESULTS), "utf8").catch(() => "{}");
+  // Only a file that isn't there yet counts as no results. One that can't be read must stop the
+  // caller: publish would otherwise write every clip start as if nothing had been analysed.
+  const text = await readFile(path.join(paths.vocals, RESULTS), "utf8").catch((error: NodeJS.ErrnoException) => {
+    if (error.code === "ENOENT") return "{}";
+    throw error;
+  });
   return new Map(Object.entries(JSON.parse(text) as Record<string, VocalStart>));
 }

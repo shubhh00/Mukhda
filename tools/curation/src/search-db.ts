@@ -55,3 +55,13 @@ export async function writeSearchDb(file: string, songs: IndexSong[], indexVersi
     db.close();
   }
 }
+
+/** The songs in a built search database, in the order they were bundled. */
+export function readSearchDbSongs(file: string): IndexSong[] {
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    return db.prepare("SELECT songId, title, filmId, filmTitle, year FROM search_songs ORDER BY rowid").all() as unknown as IndexSong[];
+  } finally {
+    db.close();
+  }
+}
