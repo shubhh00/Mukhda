@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mukhda.app.R
 import com.mukhda.app.ui.common.ObserveAsEvents
@@ -96,6 +97,11 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit
     var celebrated by remember { mutableStateOf(Verdict.HIT) }
     val stageCenter = remember { mutableStateOf(Offset.Unspecified) }
 
+    // Started and stopped with the screen, so nothing retries while the app is in the background.
+    LifecycleStartEffect(viewModel) {
+        viewModel.onAction(GameAction.OnScreenShown)
+        onStopOrDispose { viewModel.onAction(GameAction.OnScreenHidden) }
+    }
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
             // A new message replaces the one showing, so repeated hints don't queue up and an
@@ -129,7 +135,9 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit
             animationsEnabled = animationsEnabled,
             modifier = Modifier.fillMaxSize(),
         )
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding())
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding()) { data ->
+            MessageCard(data.visuals.message)
+        }
     }
 }
 
@@ -244,6 +252,13 @@ fun GameScreen(
                 onAction = onAction,
             )
         }
+        // Over the game, dropping from the top: offline, then back online.
+        ConnectionBanner(
+            isOffline = state.isOffline,
+            tryWaiting = state.rounds.values.any { it.isSending },
+            animationsEnabled = animationsEnabled,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
         val showDate = state.showDate
         if (state.isHousefullOpen && showDate != null) {
             HousefullSheet(
@@ -252,6 +267,7 @@ fun GameScreen(
                 playedDays = state.playedDays,
                 today = showDate,
                 showNo = state.showNo,
+                endsAtEpochMs = state.endsAtEpochMs,
                 onClose = { onAction(GameAction.OnHousefullClose) },
             )
         }

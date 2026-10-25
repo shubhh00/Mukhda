@@ -71,7 +71,16 @@ private val HeadlineTuck = (-12).dp
  * first show. Everything comes from the rounds kept on the phone and the server's show date.
  */
 @Composable
-fun HousefullSheet(streak: Int, best: Int, playedDays: Set<LocalDate>, today: LocalDate, showNo: Int, onClose: () -> Unit) {
+fun HousefullSheet(
+    streak: Int,
+    best: Int,
+    playedDays: Set<LocalDate>,
+    today: LocalDate,
+    showNo: Int,
+    /** When today's show closes (from the server), for "Next show in". */
+    endsAtEpochMs: Long,
+    onClose: () -> Unit,
+) {
     val colors = MukhdaTheme.colors
     BackHandler(onBack = onClose)
     val animationsEnabled = rememberAnimationsEnabled()
@@ -113,6 +122,9 @@ fun HousefullSheet(streak: Int, best: Int, playedDays: Set<LocalDate>, today: Lo
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     )
+                    Box(Modifier.fillMaxWidth().padding(top = 6.dp), contentAlignment = Alignment.Center) {
+                        Countdown(endsAtEpochMs)
+                    }
                 }
             }
         }

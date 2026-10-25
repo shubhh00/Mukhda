@@ -296,7 +296,7 @@ fun ResultBar(nextTier: Tier?, endsAtEpochMs: Long, onAction: (GameAction) -> Un
  * only measures the time left, for display.
  */
 @Composable
-private fun Countdown(endsAtEpochMs: Long) {
+internal fun Countdown(endsAtEpochMs: Long, modifier: Modifier = Modifier) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(endsAtEpochMs) {
         while (true) {
@@ -310,6 +310,7 @@ private fun Countdown(endsAtEpochMs: Long) {
         text = stringResource(R.string.next_show_in, time).uppercase(),
         style = MukhdaTheme.typography.caption,
         color = MukhdaTheme.colors.faint,
+        modifier = modifier,
     )
 }
 

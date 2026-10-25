@@ -346,8 +346,9 @@ class Media3ClipPlayer @Inject constructor(
                 return Outcome.Success(Unit)
             } catch (e: IOException) {
                 lastError = e.toDataError()
-                // Nothing to gain from retrying a missing preview or a full disk.
-                if (lastError == DataError.Network.NOT_FOUND || lastError == DataError.Local.DISK_FULL) return Outcome.Error(lastError)
+                // Nothing to gain from retrying a missing preview, a full disk, or no connection
+                // (the game sends the downloads again once the phone is back online).
+                if (lastError in NO_RETRY) return Outcome.Error(lastError)
             }
         }
         return Outcome.Error(lastError)
@@ -365,6 +366,7 @@ class Media3ClipPlayer @Inject constructor(
         const val TIMEOUT_MS = 10_000
         const val DOWNLOAD_ATTEMPTS = 3
         const val RETRY_BASE_MS = 1_000L
+        val NO_RETRY = setOf(DataError.Network.NOT_FOUND, DataError.Local.DISK_FULL, DataError.Network.NO_INTERNET)
         const val LOW_VOLUME = 0.3f
         const val BUFFER_BYTES = 64 * 1024
         const val LEAD_IN_PREFS = "clip_lead_ins"

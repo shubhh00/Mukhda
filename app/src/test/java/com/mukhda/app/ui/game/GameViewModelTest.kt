@@ -60,9 +60,10 @@ class GameViewModelTest {
 
     private val telemetry = FakeTelemetry()
     private val flags = FakeFeatureFlags()
+    private val connectivity = FakeConnectivityMonitor()
 
     private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) =
-        GameViewModel(handle, show, songIndex, player, history, telemetry, flags)
+        GameViewModel(handle, show, songIndex, player, history, telemetry, flags, connectivity)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -364,6 +365,29 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `a waiting try isn't retried while offline or in the background, and goes as soon as it can`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.NO_INTERNET)
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        vm.onAction(GameAction.OnSkipClick)
+        val loadsBefore = show.loads
+
+        advanceTimeBy(120_000)
+        assertThat(show.loads).isEqualTo(loadsBefore)
+
+        // Back online, but minimised: still nothing.
+        vm.onAction(GameAction.OnScreenHidden)
+        connectivity.isOnline.value = true
+        advanceTimeBy(120_000)
+        assertThat(show.loads).isEqualTo(loadsBefore)
+
+        // On screen again: sent at once.
+        vm.onAction(GameAction.OnScreenShown)
+        assertThat(show.loads).isEqualTo(loadsBefore + 1)
+        assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
     fun `a refused try isn't kept as sending`() = runTest(dispatcher) {
         show.nextTryError = TryError.Data(DataError.Network.SERVER_ERROR)
         val vm = viewModel()
@@ -528,10 +552,29 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `a show that won't load is reported as a handled error`() = runTest(dispatcher) {
+    fun `a show that won't load is reported as a handled error, but losing the connection isn't`() = runTest(dispatcher) {
+        show.loadError = DataError.Network.SERVER_ERROR
+        viewModel()
+        assertThat(telemetry.errors).containsExactly("load_show" to DataError.Network.SERVER_ERROR)
+
+        telemetry.errors.clear()
         show.loadError = DataError.Network.NO_INTERNET
         viewModel()
-        assertThat(telemetry.errors).containsExactly("load_show" to DataError.Network.NO_INTERNET)
+        assertThat(telemetry.errors).isEmpty()
+    }
+
+    @Test
+    fun `offline shows while it lasts, and coming back loads a show that failed`() = runTest(dispatcher) {
+        connectivity.isOnline.value = false
+        show.loadError = DataError.Network.NO_INTERNET
+        val vm = viewModel()
+        assertThat(vm.state.value.isOffline).isTrue()
+        assertThat(vm.state.value.loadError).isNotNull()
+
+        show.loadError = null
+        connectivity.isOnline.value = true
+        assertThat(vm.state.value.isOffline).isFalse()
+        assertThat(vm.state.value.loadError).isNull()
     }
 
     @Test

@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.mukhda.app.R
 import com.mukhda.app.ui.common.UiText
 import com.mukhda.app.ui.common.toUiText
+import com.mukhda.domain.DataError
 import com.mukhda.domain.GameError
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.connectivity.ConnectivityMonitor
 import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.RoundStatus
@@ -41,6 +43,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -55,6 +58,7 @@ class GameViewModel @Inject constructor(
     private val roundHistory: RoundHistory,
     private val telemetry: Telemetry,
     private val featureFlags: FeatureFlags,
+    private val connectivity: ConnectivityMonitor,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GameState(guessText = savedStateHandle[KEY_GUESS_TEXT] ?: ""))
@@ -82,6 +86,8 @@ class GameViewModel @Inject constructor(
     /** A try per tier that hasn't reached the server yet; the repository keeps it and resends it. */
     private val sending = mutableMapOf<Tier, String?>()
     private var resendJob: Job? = null
+    /** The game is on screen; off while the app is in the background. */
+    private val onScreen = MutableStateFlow(true)
 
     init {
         // Load the search index now so the first keystroke in the guess box is instant.
@@ -92,6 +98,22 @@ class GameViewModel @Inject constructor(
             roundHistory.dayRounds().collect { rounds ->
                 playedDays = Streak.playedDates(rounds)
                 publishStreak()
+            }
+        }
+        // Offline shows on screen for as long as it lasts. Back online, a waiting try is sent and a
+        // show that failed to load is loaded at once, instead of at the next retry.
+        viewModelScope.launch {
+            connectivity.isOnline.collect { online ->
+                val wasOffline = _state.value.isOffline
+                _state.update { it.copy(isOffline = !online) }
+                if (online && wasOffline) {
+                    when {
+                        _state.value.loadError != null -> loadShow()
+                        sending.isNotEmpty() -> resendNow()
+                    }
+                    // Clips that didn't finish downloading before the drop: ready them now.
+                    show?.previews?.values?.let { previews -> launch { clipPlayer.cache(previews) } }
+                }
             }
         }
         viewModelScope.launch {
@@ -123,6 +145,11 @@ class GameViewModel @Inject constructor(
             GameAction.OnTicketShared -> logVerdict(TelemetryEvent::TicketShared)
             GameAction.OnAppleMusicClick -> telemetry.log(TelemetryEvent.AppleMusicOpened(_state.value.selectedTier))
             GameAction.OnTicketClose -> _state.update { it.copy(isTicketOpen = false) }
+            GameAction.OnScreenShown -> {
+                onScreen.value = true
+                if (sending.isNotEmpty()) resendNow()
+            }
+            GameAction.OnScreenHidden -> onScreen.value = false
             GameAction.OnStreakClick -> {
                 _state.update { it.copy(isHousefullOpen = true) }
                 telemetry.log(TelemetryEvent.HousefullOpened(_state.value.streak))
@@ -146,7 +173,7 @@ class GameViewModel @Inject constructor(
                     }
                 }
                 .onFailure { error ->
-                    telemetry.recordError("load_show", error)
+                    if (!error.isConnectivity()) telemetry.recordError("load_show", error)
                     _state.update { it.copy(isLoading = false, loadError = error.toUiText()) }
                 }
         }
@@ -312,7 +339,8 @@ class GameViewModel @Inject constructor(
                     sending[tier] = songId
                     showRound(tier, before)
                     resendWhenBack()
-                    _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.try_queued)))
+                    // The offline strip says it; a message only when the phone thinks it's online.
+                    if (!_state.value.isOffline) _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.try_queued)))
                 } else {
                     // Refused: back to the round as it was, and the server has the last word.
                     telemetry.recordError("submit_try", result.error)
@@ -330,15 +358,43 @@ class GameViewModel @Inject constructor(
         publishShow()
     }
 
-    /** Retries the waiting tries, waiting longer each time, until the show loads again. */
+    /**
+     * Retries the waiting tries, waiting longer each time, until the show loads again. Only while
+     * the game is on screen and the phone is online: offline or in the background nothing runs, and
+     * coming back sends at once ([resendNow]). A try the app doesn't get to send is kept on the
+     * phone and sent on the next launch.
+     */
     private fun resendWhenBack() {
         if (resendJob?.isActive == true) return
         resendJob = viewModelScope.launch {
             var wait = RESEND_FIRST_MS
             while (sending.isNotEmpty()) {
                 delay(wait)
+                awaitCanSend()
                 showRepository.todaysShow().onSuccess { showLoaded(it) }
                 wait = (wait * 2).coerceAtMost(RESEND_MAX_MS)
+            }
+        }
+    }
+
+    /** No connection, or none good enough: the player's signal, not a fault worth reporting. */
+    private fun DataError.isConnectivity(): Boolean =
+        this == DataError.Network.NO_INTERNET || this == DataError.Network.REQUEST_TIMEOUT
+
+    /** Suspends until the game is on screen and the phone is online. */
+    private suspend fun awaitCanSend() {
+        combine(onScreen, _state) { shown, state -> shown && !state.isOffline }.first { it }
+    }
+
+    /** Sends the waiting tries now: the connection is back, or the game is on screen again. */
+    private fun resendNow() {
+        resendJob?.cancel()
+        resendJob = viewModelScope.launch {
+            awaitCanSend()
+            showRepository.todaysShow().onSuccess { showLoaded(it) }
+            if (sending.isNotEmpty()) {
+                resendJob = null
+                resendWhenBack()
             }
         }
     }
@@ -388,7 +444,7 @@ class GameViewModel @Inject constructor(
             // Once the round is over, the player knows the song: play all of it.
             clipPlayer.play(preview, if (round.isOpen) ClipLadder.clipLengthMs(round.currentStep) else null)
                 .onFailure {
-                    telemetry.recordError("play_clip", it)
+                    if (!it.isConnectivity()) telemetry.recordError("play_clip", it)
                     _events.send(GameEvent.ShowMessage(it.toUiText()))
                 }
             ticker.cancel()

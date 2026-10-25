@@ -3,6 +3,7 @@ package com.mukhda.data.di
 import android.content.Context
 import androidx.room.Room
 import com.mukhda.data.audio.Media3ClipPlayer
+import com.mukhda.data.connectivity.AndroidConnectivityMonitor
 import com.mukhda.data.db.MukhdaDatabase
 import com.mukhda.data.round.RoomRoundHistory
 import com.mukhda.data.round.RoundDao
@@ -16,6 +17,7 @@ import com.mukhda.data.show.FirebaseShowRepository
 import com.mukhda.data.telemetry.FirebaseTelemetry
 import com.mukhda.data.telemetry.RemoteConfigFeatureFlags
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.connectivity.ConnectivityMonitor
 import com.mukhda.domain.round.RoundHistory
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.show.ShowRepository
@@ -82,6 +84,9 @@ abstract class DataBindings {
 
     @Binds
     abstract fun telemetry(telemetry: FirebaseTelemetry): Telemetry
+
+    @Binds
+    abstract fun connectivity(monitor: AndroidConnectivityMonitor): ConnectivityMonitor
 
     @Binds
     abstract fun featureFlags(flags: RemoteConfigFeatureFlags): FeatureFlags

@@ -52,6 +52,13 @@
     <string name="now_showing">Now showing</string>
     <!-- A try that couldn't reach the server yet. -->
     <string name="slot_sending">Sending…</string>
+    <!-- The strip under the header while the phone is offline. -->
+    <string name="offline_title">You\'re offline</string>
+    <string name="offline_waiting">Your try will go through when you\'re back</string>
+    <string name="offline_idle">Clips already loaded still play</string>
+    <string name="online_title">Back online</string>
+    <string name="online_detail">You\'re connected again</string>
+    <string name="online_sending">Sending your try now</string>
     <string name="try_queued">No connection. Your try will go through when you\'re back online.</string>
     <!-- The valance's lettering through a round, like a film's running order: one per try used. -->
     <string name="marquee_reel_two">Reel two</string>

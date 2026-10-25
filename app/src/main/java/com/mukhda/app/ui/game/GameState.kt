@@ -9,6 +9,8 @@ import java.time.LocalDate
 @Stable
 data class GameState(
     val isLoading: Boolean = true,
+    /** The phone can't reach the internet: shown as a strip under the header. */
+    val isOffline: Boolean = false,
     val loadError: UiText? = null,
     val showNo: Int = 0,
     /** "MON 13 OCT", from the server's show date. */
@@ -132,6 +134,9 @@ sealed interface GameAction {
     data object OnTicketShared : GameAction
     /** "Listen on Apple Music". */
     data object OnAppleMusicClick : GameAction
+    /** The game came on screen, or went to the background: waiting tries only retry while shown. */
+    data object OnScreenShown : GameAction
+    data object OnScreenHidden : GameAction
     /** The "N days housefull" badge. */
     data object OnStreakClick : GameAction
     /** Back, the close button, or a tap outside the housefull calendar. */
