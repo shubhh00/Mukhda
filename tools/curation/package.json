@@ -18,6 +18,7 @@
     "lastfm": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts lastfm",
     "tier": "node --disable-warning=ExperimentalWarning src/cli.ts tier",
     "vocals": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts vocals",
+    "reschedule": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts reschedule",
     "publish": "node --disable-warning=ExperimentalWarning --env-file-if-exists=.env src/cli.ts publish",
     "typecheck": "tsc",
     "test": "node --disable-warning=ExperimentalWarning --test \"test/**/*.test.ts\""

@@ -18,6 +18,7 @@ import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
+import com.mukhda.domain.round.ShowCalendar
 import com.mukhda.domain.round.TryRecord
 import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
@@ -63,10 +64,12 @@ class FirebaseShowRepository @Inject constructor(
         mutex.withLock {
             signIn()?.let { return@withLock Outcome.Error(it) }
             // Tries left over from an earlier session go first. A try for a day that's over comes
-            // back ROUND_CLOSED and is dropped; one that still can't get through waits for later.
+            // back ROUND_CLOSED and is dropped. One that still can't get through fails the load
+            // with its error: a show without it would look as if every try were in, and the
+            // screen would stop showing it as sending and stop trying.
             for (pending in tryDao.pending()) {
-                val sent = send(pending)
-                if (sent is Outcome.Error && sent.error.isTransient) break
+                val failed = ((send(pending) as? Outcome.Error)?.error as? TryError.Data)
+                if (failed != null && failed.isTransient) return@withLock Outcome.Error(failed.error)
             }
             fetchShow()
         }
@@ -154,6 +157,12 @@ class FirebaseShowRepository @Inject constructor(
             is Outcome.Error -> Outcome.Error((fetched.error as? TryError.Data)?.error ?: DataError.Network.UNKNOWN)
             is Outcome.Success -> {
                 current = fetched.data
+                // Rounds of earlier days still open on the phone closed at their midnight: unfinished,
+                // each ended at its own show's end, never at the phone's time.
+                for (date in roundDao.openDatesBefore(fetched.data.date.toString())) {
+                    val end = ShowCalendar.showEnd(LocalDate.parse(date)).toEpochMilli()
+                    roundDao.closeOpenOn(date, RoundStatus.UNFINISHED.name, end)
+                }
                 fetched.data.rounds.values.filter { it.isStarted }.forEach { saveRound(fetched.data.date, it) }
                 fetched
             }

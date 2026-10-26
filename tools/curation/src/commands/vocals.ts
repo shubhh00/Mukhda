@@ -61,3 +61,15 @@ export async function readVocalStarts(): Promise<Map<string, VocalStart>> {
   });
   return new Map(Object.entries(JSON.parse(text) as Record<string, VocalStart>));
 }
+
+/** How long before the singing a clip starts (vocals/find_vocal_start.py, LEAD_MS). */
+const LEAD_MS = 600;
+
+/**
+ * True when a song's short clips can't reach a voice: its preview has no singing, or the singing
+ * comes so late that the ten-second full-clip rule held the start back. Such a song plays only
+ * intro music until the full clip, so it isn't scheduled.
+ */
+export function hasNoEarlySinging(found: VocalStart): boolean {
+  return found.vocalStartMs === null || found.vocalStartMs - LEAD_MS > found.clipStartMs + 50;
+}

@@ -256,7 +256,7 @@ private fun TextAction(text: String, color: Color, onClick: () -> Unit) {
 
 /** In place of the guess bar once a round is over: share, move on, and when the next show starts. */
 @Composable
-fun ResultBar(nextTier: Tier?, endsAtEpochMs: Long, onAction: (GameAction) -> Unit, modifier: Modifier = Modifier) {
+fun ResultBar(nextTier: Tier?, endsAtEpochMs: Long, clockOffsetMs: Long, onAction: (GameAction) -> Unit, modifier: Modifier = Modifier) {
     val colors = MukhdaTheme.colors
     Column(
         modifier = modifier
@@ -284,7 +284,7 @@ fun ResultBar(nextTier: Tier?, endsAtEpochMs: Long, onAction: (GameAction) -> Un
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Countdown(endsAtEpochMs)
+            Countdown(endsAtEpochMs, clockOffsetMs)
             Text("·", style = MukhdaTheme.typography.caption, color = colors.faint)
             Text(stringResource(R.string.apple_music_credit), style = MukhdaTheme.typography.caption, color = colors.faint)
         }
@@ -296,26 +296,31 @@ fun ResultBar(nextTier: Tier?, endsAtEpochMs: Long, onAction: (GameAction) -> Un
  * only measures the time left, for display.
  */
 @Composable
-private fun Countdown(endsAtEpochMs: Long) {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(endsAtEpochMs) {
-        while (true) {
-            now = System.currentTimeMillis()
-            delay(TICK_MS - now % TICK_MS)
-        }
-    }
-    val left = ((endsAtEpochMs - now) / TICK_MS).coerceAtLeast(0)
+internal fun Countdown(endsAtEpochMs: Long, clockOffsetMs: Long, modifier: Modifier = Modifier) {
+    val left = rememberSecondsLeft(endsAtEpochMs, clockOffsetMs)
     val time = "%02d:%02d:%02d".format(left / 3600, left / 60 % 60, left % 60)
     Text(
         text = stringResource(R.string.next_show_in, time).uppercase(),
         style = MukhdaTheme.typography.caption,
         color = MukhdaTheme.colors.faint,
+        modifier = modifier,
     )
 }
 
 private const val TICK_MS = 1_000L
 
-/** The clip label for share text: "1 sec", or out of tries. */
-@StringRes
-internal fun shareClipRes(round: RoundUi): Int =
-    round.solvedAtStep?.let { clipLengthRes(it.coerceIn(0, ClipLadder.LAST_STEP)) } ?: R.string.share_out_of_tries
+/**
+ * Whole seconds until [endsAtEpochMs], on the server's clock (the phone's plus [clockOffsetMs]),
+ * ticking each second. Never below zero.
+ */
+@Composable
+internal fun rememberSecondsLeft(endsAtEpochMs: Long, clockOffsetMs: Long): Long {
+    var now by remember { mutableLongStateOf(System.currentTimeMillis() + clockOffsetMs) }
+    LaunchedEffect(endsAtEpochMs, clockOffsetMs) {
+        while (true) {
+            now = System.currentTimeMillis() + clockOffsetMs
+            delay(TICK_MS - now % TICK_MS)
+        }
+    }
+    return ((endsAtEpochMs - now) / TICK_MS).coerceAtLeast(0)
+}

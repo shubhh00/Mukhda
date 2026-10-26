@@ -24,6 +24,11 @@ class ShowCalendarTest {
     }
 
     @Test
+    fun `a show ends at the next midnight IST`() {
+        assertThat(ShowCalendar.showEnd(oct12)).isEqualTo(Instant.parse("2026-10-12T18:30:00Z"))
+    }
+
+    @Test
     fun `show number counts from launch day as 1`() {
         val launch = LocalDate.of(2026, 10, 1)
         assertThat(ShowCalendar.showNo(launch, launch)).isEqualTo(1)

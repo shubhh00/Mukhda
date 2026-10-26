@@ -117,6 +117,8 @@ fun CurtainStage(
     accent: Color = MukhdaTheme.colors.ink,
     /** Lettered on the valance: what's on now. */
     marquee: String = stringResource(R.string.now_showing),
+    /** The show's last minutes: the valance lights up marigold and counts down to the end. */
+    lastCall: LastCall? = null,
 ) {
     val colors = MukhdaTheme.colors
     val revealed = reveal != null
@@ -204,18 +206,30 @@ fun CurtainStage(
                         .graphicsLayer { alpha = 1f - openness.value * 0.8f }
                         .drawBehindKeyed(Unit) { drawStageShade() },
                 )
-                Valance(colors)
-                // Lettered on the pelmet, like a cinema's marquee board.
+                Valance(colors, lit = lastCall != null)
+                // Lettered on the pelmet, like a cinema's marquee board; in the last minutes, the
+                // countdown. Keyed on what's showing, not on each second, so a tick doesn't fade.
                 Crossfade(
-                    targetState = marquee,
+                    targetState = lastCall ?: marquee,
                     animationSpec = tween(if (animationsEnabled) MARQUEE_FADE_MS else 0),
                     modifier = Modifier.align(Alignment.TopCenter).height(ValanceHeight),
                     label = "marquee",
-                ) { text ->
+                ) { shown ->
+                    val text = when (shown) {
+                        is LastCall -> {
+                            val left = rememberSecondsLeft(shown.endsAtEpochMs, shown.clockOffsetMs)
+                            stringResource(R.string.marquee_last_call, "%02d:%02d".format(left / 60, left % 60))
+                        }
+                        else -> shown as String
+                    }
                     Text(
                         text = text.uppercase(),
-                        style = MukhdaTheme.typography.caption.copy(letterSpacing = MukhdaTheme.typography.caption.letterSpacing * 2),
-                        color = colors.marigold,
+                        // Tabular figures: every digit the same width, so the countdown doesn't shift.
+                        style = MukhdaTheme.typography.caption.copy(
+                            letterSpacing = MukhdaTheme.typography.caption.letterSpacing * 2,
+                            fontFeatureSettings = "tnum",
+                        ),
+                        color = if (shown is LastCall) colors.ink else colors.marigold,
                         maxLines = 1,
                         modifier = Modifier.fillMaxHeight().wrapContentHeight(Alignment.CenterVertically),
                     )
@@ -382,29 +396,34 @@ internal fun DrawScope.drawStageShade() {
     )
 }
 
-/** Ink pelmet with a marigold edge and fringe. */
+/** Ink pelmet with a marigold edge and fringe; [lit], marigold with an ink fringe (the last call). */
 @Composable
-private fun BoxScope.Valance(colors: MukhdaColors) {
+private fun BoxScope.Valance(colors: MukhdaColors, lit: Boolean) {
     Box(
         modifier = Modifier
             .align(Alignment.TopCenter)
             .fillMaxWidth()
             .height(33.dp)
-            .drawBehindKeyed(colors) {
+            .drawBehindKeyed(colors to lit) {
                 val band = ValanceHeight.toPx()
                 val edge = 2.dp.toPx()
-                drawRect(colors.ink, size = Size(size.width, band))
-                drawRect(colors.marigoldDeep, topLeft = Offset(0f, band), size = Size(size.width, edge))
+                val fringe = if (lit) colors.ink else colors.marigoldDeep
+                // Deep marigold, not the marigold of the Easy tab, so it doesn't read as a tier.
+                drawRect(if (lit) colors.marigoldDeep else colors.ink, size = Size(size.width, band))
+                drawRect(fringe, topLeft = Offset(0f, band), size = Size(size.width, edge))
                 val tick = 2.dp.toPx()
                 val gap = 9.dp.toPx()
                 var x = 0f
                 while (x < size.width) {
-                    drawRect(colors.marigoldDeep, topLeft = Offset(x, band + edge), size = Size(tick, size.height - band - edge))
+                    drawRect(fringe, topLeft = Offset(x, band + edge), size = Size(tick, size.height - band - edge))
                     x += gap
                 }
             },
     )
 }
+
+/** When the show ends, for the marquee's countdown in its last minutes. */
+data class LastCall(val endsAtEpochMs: Long, val clockOffsetMs: Long)
 
 /** Diamonds on the frame's four corners. */
 @Composable

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { TIERS } from "../src/popularity.ts";
-import { FILM_GAP_DAYS, MIN_WEIGHT, type SchedulableSong, SONG_GAP_DAYS, addDays, drawWeight, schedule, showNoOf } from "../src/schedule.ts";
+import { FILM_GAP_DAYS, MIN_WEIGHT, type SchedulableSong, SONG_GAP_DAYS, addDays, drawWeight, replaceSongs, schedule, showNoOf } from "../src/schedule.ts";
 
 /** [perTier] songs per tier, each from its own film, with [composers] composers taking turns. */
 function pool(perTier: number, composers = 50): SchedulableSong[] {
@@ -89,4 +89,89 @@ test("Easy, Medium and Hard draw recent songs more often; Expert and Legend don'
     days.filter((d) => year(d.tiers[tier].songId) >= 2016).length / days.length;
   assert.ok(recentShare("EASY") > 0.55, `Easy recent share ${recentShare("EASY")}`);
   assert.ok(recentShare("LEGEND") < 0.5, `Legend recent share ${recentShare("LEGEND")}`);
+});
+
+test("replaceSongs swaps rejected songs on later days only, within the tier and the rules", () => {
+  const songs = pool(40);
+  const days = schedule(songs, [], "2026-10-01", 20, "2026-10-01", 1);
+  const out = new Set([days[2]!.tiers.HARD.songId, days[10]!.tiers.LEGEND.songId, days[12]!.tiers.EASY.backupSongId]);
+  const changes = replaceSongs(songs, days, (id) => out.has(id), "2026-10-05", 1);
+
+  // Every slot holding a rejected song from "from" on, main or backup, wherever it recurs; day 3
+  // (2026-10-03) is before "from", so its Hard song stays even though it's out.
+  const expected = days
+    .filter((d) => d.date >= "2026-10-05")
+    .flatMap((d) => TIERS.flatMap((t) => (["songId", "backupSongId"] as const).filter((slot) => out.has(d.tiers[t][slot])).map((slot) => [d.date, t, slot])));
+  assert.ok(expected.length >= 2);
+  assert.deepEqual(changes.map((c) => [c.date, c.tier, c.slot]), expected);
+  assert.ok(!changes.some((c) => c.date < "2026-10-05"));
+  const scheduled = new Set(days.flatMap((d) => TIERS.flatMap((t) => [d.tiers[t].songId, d.tiers[t].backupSongId])));
+  const filmOf = new Map(songs.map((s) => [s.songId, s.filmId]));
+  for (const c of changes) {
+    assert.ok(!out.has(c.to));
+    assert.ok(!scheduled.has(c.to), "never a song already scheduled");
+    assert.equal(songs.find((s) => s.songId === c.to)!.tier, c.tier);
+    const n = Date.parse(c.date) / 86_400_000;
+    for (const d of days) {
+      const m = Date.parse(d.date) / 86_400_000;
+      if (m !== n && Math.abs(m - n) < FILM_GAP_DAYS) for (const t of TIERS) assert.notEqual(filmOf.get(d.tiers[t].songId), filmOf.get(c.to));
+    }
+  }
+  // Same seed, same picks.
+  assert.deepEqual(replaceSongs(songs, days, (id) => out.has(id), "2026-10-05", 1), changes);
+});
+
+/** One hand-made day: every tier's main and backup, each from its own film unless [films] says. */
+function handDay(date: string, mains: Partial<Record<(typeof TIERS)[number], string>> = {}) {
+  return {
+    date,
+    showNo: 1,
+    tiers: Object.fromEntries(TIERS.map((t) => [t, { songId: mains[t] ?? `${date}_${t}_main`, backupSongId: `${date}_${t}_backup` }])),
+  } as Parameters<typeof replaceSongs>[1][number];
+}
+
+test("replaceSongs lets songs being replaced give up their films to each other's replacements", () => {
+  // Easy's song from film A and Hard's from film B both go. The only Easy song left is from film
+  // B, the only Hard one from film A: swapped over, the day still has each film once.
+  const day = handDay("2026-10-10", { EASY: "e_out", HARD: "h_out" });
+  const songs: SchedulableSong[] = [
+    { songId: "e_out", filmId: "A", composer: "c1", tier: "EASY", year: 2020 },
+    { songId: "h_out", filmId: "B", composer: "c2", tier: "HARD", year: 2020 },
+    { songId: "e_new", filmId: "B", composer: "c3", tier: "EASY", year: 2020 },
+    { songId: "h_new", filmId: "A", composer: "c4", tier: "HARD", year: 2020 },
+  ];
+  const changes = replaceSongs(songs, [day], (id) => id.endsWith("_out"), "2026-10-10", 1);
+  assert.deepEqual(changes.map((c) => [c.tier, c.to]), [["EASY", "e_new"], ["HARD", "h_new"]]);
+});
+
+test("replaceSongs keeps films a week apart from the songs that stay, not from those that go", () => {
+  // Film A leaves day 10 with its song, so a replacement two days later may use film A.
+  const days = [handDay("2026-10-10", { EASY: "e_out" }), handDay("2026-10-12", { HARD: "h_out" })];
+  const songs: SchedulableSong[] = [
+    { songId: "e_out", filmId: "A", composer: "c1", tier: "EASY", year: 2020 },
+    { songId: "h_out", filmId: "B", composer: "c2", tier: "HARD", year: 2020 },
+    { songId: "e_new", filmId: "C", composer: "c3", tier: "EASY", year: 2020 },
+    { songId: "h_new", filmId: "A", composer: "c4", tier: "HARD", year: 2020 },
+  ];
+  const changes = replaceSongs(songs, days, (id) => id.endsWith("_out"), "2026-10-10", 1);
+  assert.deepEqual(changes.map((c) => [c.date, c.to]), [["2026-10-10", "e_new"], ["2026-10-12", "h_new"]]);
+});
+
+test("replaceSongs never puts a film twice on a day, even when it fills several of the day's slots", () => {
+  // Films shared across tiers, as in a real catalogue: song i of every tier is from film i.
+  const songs = TIERS.flatMap((tier) =>
+    Array.from({ length: 60 }, (_, i) => ({ songId: `s_${tier}_${i}`, filmId: `f_${i}`, composer: `Composer ${i}`, tier, year: 2020 })),
+  );
+  for (let seed = 1; seed <= 20; seed++) {
+    const days = schedule(songs, [], "2026-10-01", 8, "2026-10-01", seed);
+    // Every slot of the last three days is rejected, so each of those days gets ten picks.
+    const out = new Set(days.slice(5).flatMap((d) => TIERS.flatMap((t) => [d.tiers[t].songId, d.tiers[t].backupSongId])));
+    const changes = replaceSongs(songs, days, (id) => out.has(id), "2026-10-06", seed);
+    const filmOf = new Map(songs.map((s) => [s.songId, s.filmId]));
+    for (const day of days.slice(5)) {
+      const picks = changes.filter((c) => c.date === day.date).map((c) => filmOf.get(c.to));
+      assert.equal(picks.length, 10);
+      assert.equal(new Set(picks).size, picks.length, `seed ${seed}: a film twice on ${day.date}`);
+    }
+  }
 });

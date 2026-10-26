@@ -3,6 +3,7 @@ package com.mukhda.data.di
 import android.content.Context
 import androidx.room.Room
 import com.mukhda.data.audio.Media3ClipPlayer
+import com.mukhda.data.connectivity.AndroidConnectivityMonitor
 import com.mukhda.data.db.MukhdaDatabase
 import com.mukhda.data.round.RoomRoundHistory
 import com.mukhda.data.round.RoundDao
@@ -16,6 +17,7 @@ import com.mukhda.data.show.FirebaseShowRepository
 import com.mukhda.data.telemetry.FirebaseTelemetry
 import com.mukhda.data.telemetry.RemoteConfigFeatureFlags
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.connectivity.ConnectivityMonitor
 import com.mukhda.domain.round.RoundHistory
 import com.mukhda.domain.search.SongIndexDataSource
 import com.mukhda.domain.show.ShowRepository
@@ -29,6 +31,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import java.time.Clock
 import javax.inject.Qualifier
 import javax.inject.Singleton
 
@@ -52,6 +55,10 @@ object DatabaseModule {
 
     @Provides
     fun tryDao(db: MukhdaDatabase): TryDao = db.tryDao()
+
+    /** The phone's clock: only for timing, offset by the server's (the game never trusts it alone). */
+    @Provides
+    fun clock(): Clock = Clock.systemUTC()
 
     @Provides
     @IoDispatcher
@@ -82,6 +89,9 @@ abstract class DataBindings {
 
     @Binds
     abstract fun telemetry(telemetry: FirebaseTelemetry): Telemetry
+
+    @Binds
+    abstract fun connectivity(monitor: AndroidConnectivityMonitor): ConnectivityMonitor
 
     @Binds
     abstract fun featureFlags(flags: RemoteConfigFeatureFlags): FeatureFlags

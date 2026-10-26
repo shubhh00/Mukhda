@@ -16,6 +16,9 @@ object ShowCalendar {
 
     fun istDateOf(instant: Instant): LocalDate = instant.atZone(IST).toLocalDate()
 
+    /** When [date]'s show closes: the next midnight IST. */
+    fun showEnd(date: LocalDate): Instant = date.plusDays(1).atStartOfDay(IST).toInstant()
+
     /** showNo = (IST date − launch date) + 1. */
     fun showNo(date: LocalDate, launchDate: LocalDate): Int {
         require(!date.isBefore(launchDate)) { "date $date is before launch $launchDate" }

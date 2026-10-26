@@ -191,3 +191,44 @@ test("a 61st show in a minute is turned away", async () => {
   for (let i = 0; i < 60; i++) await getShow(db(), UID, NOON, noLookup);
   await assert.rejects(getShow(db(), UID, NOON, noLookup), /Too many requests/);
 });
+
+test("the show carries the server's clock", async () => {
+  const show = await getShow(db(), UID, NOON, noLookup);
+  assert.equal(show.serverTime, NOON.toISOString());
+});
+
+test("tomorrow's clips come only in the show's last five minutes, as audio links alone", async () => {
+  await seedShow(db(), "2026-10-13", 13);
+  assert.equal((await getShow(db(), UID, NOON, noLookup)).next, null);
+  const late = new Date("2026-10-12T18:26:00Z"); // 23:56 IST
+  const next = (await getShow(db(), UID, late, noLookup)).next;
+  assert.equal(next?.date, "2026-10-13");
+  for (const preview of Object.values(next!.previews)) assert.deepEqual(Object.keys(preview!).sort(), ["previewUrl", "startOffsetMs"]);
+  assert.equal(Object.keys(next!.previews).length, 5);
+});
+
+test("no next show scheduled is no next clips, not an error", async () => {
+  const late = new Date("2026-10-12T18:26:00Z");
+  assert.equal((await getShow(db(), UID, late, noLookup)).next, null);
+});
+
+test("a next show that can't be read leaves today's show as it is", async () => {
+  // Tomorrow points at songs that don't exist: reading them fails, today's show must not.
+  const tiers = Object.fromEntries(
+    ["EASY", "MEDIUM", "HARD", "EXPERT", "LEGEND"].map((tier) => [tier, { songId: "s_missing", backupSongId: "s_missing_too" }]),
+  );
+  await db().doc("schedule/2026-10-13").set({ showNo: 13, tiers });
+  const late = new Date("2026-10-12T18:26:00Z");
+  const show = await getShow(db(), UID, late, noLookup);
+  assert.equal(show.date, DATE);
+  assert.equal(show.next, null);
+});
+
+test("after midnight, a show says nothing about yesterday's songs", async () => {
+  await skip(); // HARD started yesterday, never finished
+  await seedShow(db(), "2026-10-13", 13);
+  const show = await getShow(db(), UID, new Date("2026-10-13T03:00:00Z"), noLookup);
+  assert.equal(show.date, "2026-10-13");
+  assert.equal("ended" in show, false);
+  for (const tier of Object.values(show.tiers)) assert.equal(tier!.reveal, null);
+});

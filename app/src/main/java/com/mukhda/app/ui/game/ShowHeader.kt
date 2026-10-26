@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.mukhda.app.R
 import com.mukhda.app.ui.theme.MukhdaTheme
 
@@ -36,6 +37,8 @@ fun ShowHeader(
     hasPlayed: Boolean,
     onStreakClick: () -> Unit,
     modifier: Modifier = Modifier,
+    /** False while the show can't load: the last show's number may already be over. */
+    showLine: Boolean = true,
 ) {
     val colors = MukhdaTheme.colors
     val type = MukhdaTheme.typography
@@ -55,8 +58,8 @@ fun ShowHeader(
             if (showNo > 0) StreakBadge(streak, hasPlayed, onClick = onStreakClick)
         }
         Text(
-            text = if (showNo > 0) stringResource(R.string.show_line, showNo, dateLabel) else "",
-            style = type.caption.copy(letterSpacing = MukhdaTheme.typography.label.letterSpacing),
+            text = if (showNo > 0 && showLine) stringResource(R.string.show_line, showNo, dateLabel) else "",
+            style = type.caption.copy(fontSize = 11.sp, letterSpacing = MukhdaTheme.typography.label.letterSpacing),
             color = colors.muted,
             modifier = Modifier.padding(top = 4.dp),
         )

@@ -9,6 +9,7 @@ import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.SongReveal
 import com.mukhda.domain.round.TryRecord
+import com.mukhda.domain.show.NextShow
 import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
 import com.mukhda.domain.show.TryError
@@ -31,11 +32,33 @@ class FakeShowRepository : ShowRepository {
         private set
     val reveal = SongReveal("s7", "Kal Ho Naa Ho", "Kal Ho Naa Ho", 2003, "https://example.com/art.jpg", "https://music.apple.com/x")
 
+    /** The show date and end; a test moves them on to play out a midnight. */
+    var showDate: LocalDate = date
+    var showNo = 12
+    var endsAt: Instant = Instant.parse("2026-10-13T18:30:00Z")
+    var next: NextShow? = null
+
+    /** When set, the next load waits for it before the "server" answers. */
+    var showGate: CompletableDeferred<Unit>? = null
+    /** Fails the next load only. */
+    var loadErrorOnce: DataError? = null
+
     override suspend fun todaysShow(): Outcome<Show, DataError> {
         loads++
+        showGate?.let { gate ->
+            showGate = null
+            gate.await()
+        }
+        loadErrorOnce?.let { error ->
+            loadErrorOnce = null
+            return Outcome.Error(error)
+        }
         loadError?.let { return Outcome.Error(it) }
         return Outcome.Success(
-            Show(date, showNo = 12, endsAt = Instant.parse("2026-10-13T18:30:00Z"), rounds = rounds, previews = previews),
+            Show(
+                showDate, showNo = showNo, endsAt = endsAt, rounds = rounds, previews = previews,
+                serverTime = null, next = next,
+            ),
         )
     }
 

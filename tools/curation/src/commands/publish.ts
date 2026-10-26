@@ -8,7 +8,7 @@ import { TIERS, type Tier } from "../popularity.ts";
 import { type SchedulableSong, type ScheduledDay, addDays, schedule } from "../schedule.ts";
 import type { IndexSong } from "../search-index.ts";
 import type { TieredSong } from "./tier.ts";
-import { readVocalStarts } from "./vocals.ts";
+import { hasNoEarlySinging, readVocalStarts } from "./vocals.ts";
 
 export interface PublishOptions {
   /** How many days of shows to add after the last scheduled one. */
@@ -27,7 +27,7 @@ export interface PublishOptions {
 /** Firestore takes at most 500 writes in a batch. */
 const BATCH_SIZE = 400;
 
-const todayIst = () => new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+export const todayIst = () => new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 /** The Firebase project, from the repo's .firebaserc. */
 async function projectId(): Promise<string> {
@@ -39,6 +39,19 @@ async function projectId(): Promise<string> {
  * The emulator unless [production] is asked for, and then only with credentials and no emulator
  * set, so a test run can never write to the live game by accident.
  */
+/** Every scheduled day, by date: what actually plays, for the scheduling rules. */
+export async function readSchedule(db: Firestore): Promise<(ScheduledDay & { live: boolean })[]> {
+  const days = (await db.collection("schedule").get()).docs.map((doc) => {
+    const data = doc.data() as { showNo: number; tiers: Record<Tier, { songId: string; backupSongId: string; activeSongId?: string }> };
+    const tiers = Object.fromEntries(
+      TIERS.map((t) => [t, { songId: data.tiers[t].activeSongId ?? data.tiers[t].songId, backupSongId: data.tiers[t].backupSongId }]),
+    ) as ScheduledDay["tiers"];
+    // A day the server has already swapped a song on has been played: never rewritten.
+    return { date: doc.id, showNo: data.showNo, tiers, live: TIERS.some((t) => data.tiers[t].activeSongId !== undefined) };
+  });
+  return days.sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export async function connect(production: boolean): Promise<{ db: Firestore; where: string }> {
   const project = await projectId();
   if (production) {
@@ -103,7 +116,10 @@ export async function publish(options: PublishOptions): Promise<void> {
   const { db, where } = await connect(options.production);
   console.log(`Publishing to ${where}.`);
 
-  const plan = options.songsOnly ? null : await planDays(db, answers, indexed, options);
+  // Songs whose short clips can't reach a voice are published (a day may already use one) but
+  // never scheduled again.
+  const schedulable = answers.filter((t) => { const found = vocalStarts.get(t.songId); return !found || !hasNoEarlySinging(found); });
+  const plan = options.songsOnly ? null : await planDays(db, schedulable, indexed, options);
 
   // A song already published keeps the preview the server last checked: the server refreshes it,
   // and the pool's copy may be older. A new song's preview is marked never checked, so the server
@@ -167,7 +183,8 @@ export async function publish(options: PublishOptions): Promise<void> {
   for (const day of days) await db.doc(`schedule/${day.date}`).create({ showNo: day.showNo, tiers: day.tiers });
 
   console.log(`Wrote ${songDocs.length} songs (${starts} start before the singing), ${index.length} catalogue entries, and ${days.length} days: ${days[0]!.date} (Show No. ${days[0]!.showNo}) to ${days.at(-1)!.date}.`);
-  const perTier = Map.groupBy(answers, (t) => t.tier);
+  // Only songs that can still be scheduled: those whose clips never reach a voice can't.
+  const perTier = Map.groupBy(schedulable, (t) => t.tier);
   const used = existing.length + days.length;
   console.log(`Songs left per tier at a song a day: ${TIERS.map((t) => `${t} ${(perTier.get(t)?.length ?? 0) - used}`).join(", ")}.`);
 }

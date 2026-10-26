@@ -22,6 +22,8 @@ import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
 import com.mukhda.domain.show.TryError
+import com.mukhda.domain.audio.Preview
+import com.mukhda.domain.show.NextShow
 import com.mukhda.domain.telemetry.TelemetryEvent
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -60,9 +62,16 @@ class GameViewModelTest {
 
     private val telemetry = FakeTelemetry()
     private val flags = FakeFeatureFlags()
+    private val connectivity = FakeConnectivityMonitor()
+    /** The phone's clock, running with the test's virtual time from noon IST on the show date. */
+    private val clock = object : java.time.Clock() {
+        override fun getZone() = java.time.ZoneOffset.UTC
+        override fun withZone(zone: java.time.ZoneId?) = this
+        override fun instant(): java.time.Instant = java.time.Instant.parse("2026-10-13T06:30:00Z").plusMillis(dispatcher.scheduler.currentTime)
+    }
 
     private fun viewModel(handle: SavedStateHandle = SavedStateHandle()) =
-        GameViewModel(handle, show, songIndex, player, history, telemetry, flags)
+        GameViewModel(handle, show, songIndex, player, history, telemetry, flags, connectivity, clock)
 
     private fun TestScope.type(vm: GameViewModel, text: String) {
         vm.onAction(GameAction.OnGuessTextChange(text))
@@ -364,6 +373,29 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `a waiting try isn't retried while offline or in the background, and goes as soon as it can`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.NO_INTERNET)
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        vm.onAction(GameAction.OnSkipClick)
+        val loadsBefore = show.loads
+
+        advanceTimeBy(120_000)
+        assertThat(show.loads).isEqualTo(loadsBefore)
+
+        // Back online, but minimised: still nothing.
+        vm.onAction(GameAction.OnScreenHidden)
+        connectivity.isOnline.value = true
+        advanceTimeBy(120_000)
+        assertThat(show.loads).isEqualTo(loadsBefore)
+
+        // On screen again: sent at once.
+        vm.onAction(GameAction.OnScreenShown)
+        assertThat(show.loads).isEqualTo(loadsBefore + 1)
+        assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
     fun `a refused try isn't kept as sending`() = runTest(dispatcher) {
         show.nextTryError = TryError.Data(DataError.Network.SERVER_ERROR)
         val vm = viewModel()
@@ -431,6 +463,20 @@ class GameViewModelTest {
         show.answerGate!!.complete(Unit)
         assertThat(vm.state.value.round!!.slots.count { it is TrySlotUi.Used }).isEqualTo(1)
         assertThat(show.requestIds).hasSize(1)
+    }
+
+    @Test
+    fun `the last skip shows as sending, so the round ends with its song rather than before it`() = runTest(dispatcher) {
+        val vm = viewModel()
+        repeat(4) { vm.onAction(GameAction.OnSkipClick) }
+        show.answerGate = CompletableDeferred()
+        vm.onAction(GameAction.OnSkipClick)
+        with(vm.state.value.round!!) {
+            assertThat(isOpen).isTrue()
+            assertThat(slots.last()).isInstanceOf<TrySlotUi.Sending>()
+        }
+        show.answerGate!!.complete(Unit)
+        assertThat(vm.state.value.round!!.isOpen).isFalse()
     }
 
     @Test
@@ -528,10 +574,141 @@ class GameViewModelTest {
     }
 
     @Test
-    fun `a show that won't load is reported as a handled error`() = runTest(dispatcher) {
+    fun `a show that won't load is reported as a handled error, but losing the connection isn't`() = runTest(dispatcher) {
+        show.loadError = DataError.Network.SERVER_ERROR
+        viewModel()
+        assertThat(telemetry.errors).containsExactly("load_show" to DataError.Network.SERVER_ERROR)
+
+        telemetry.errors.clear()
         show.loadError = DataError.Network.NO_INTERNET
         viewModel()
-        assertThat(telemetry.errors).containsExactly("load_show" to DataError.Network.NO_INTERNET)
+        assertThat(telemetry.errors).isEmpty()
+    }
+
+    @Test
+    fun `offline shows while it lasts, and coming back loads a show that failed`() = runTest(dispatcher) {
+        connectivity.isOnline.value = false
+        show.loadError = DataError.Network.NO_INTERNET
+        val vm = viewModel()
+        assertThat(vm.state.value.isOffline).isTrue()
+        assertThat(vm.state.value.loadError).isNotNull()
+
+        show.loadError = null
+        connectivity.isOnline.value = true
+        assertThat(vm.state.value.isOffline).isFalse()
+        assertThat(vm.state.value.loadError).isNull()
+    }
+
+    @Test
+    fun `back online while the show is loading, a load that then fails is tried again`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        show.showGate = gate
+        show.loadErrorOnce = DataError.Network.NO_INTERNET
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        connectivity.isOnline.value = true
+        // The load that was out when the connection came back fails after all.
+        gate.complete(Unit)
+        assertThat(show.loads).isEqualTo(2)
+        assertThat(vm.state.value.loadError).isNull()
+        assertThat(vm.state.value.showNo).isEqualTo(12)
+    }
+
+    @Test
+    fun `back online after the show loaded, a waiting try goes at once even while clips still download`() = runTest(dispatcher) {
+        player.cacheGate = CompletableDeferred()
+        show.nextTryError = TryError.Data(DataError.Network.NO_INTERNET)
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        vm.onAction(GameAction.OnSkipClick)
+        val loadsBefore = show.loads
+        connectivity.isOnline.value = true
+        assertThat(show.loads).isEqualTo(loadsBefore + 1)
+        assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
+    fun `a load that fails while still offline isn't tried again until the connection is back`() = runTest(dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        show.showGate = gate
+        show.loadErrorOnce = DataError.Network.NO_INTERNET
+        val vm = viewModel()
+        connectivity.isOnline.value = false
+        connectivity.isOnline.value = true
+        connectivity.isOnline.value = false
+        gate.complete(Unit)
+        assertThat(show.loads).isEqualTo(1)
+        assertThat(vm.state.value.loadError).isNotNull()
+    }
+
+    /** Virtual ms from the test's start (noon IST) to [show]'s end, at 00:00 IST. */
+    private val toMidnight = 12 * 60 * 60 * 1000L
+
+    @Test
+    fun `in the show's last five minutes the marquee counts down and tomorrow's clips download`() = runTest(dispatcher) {
+        val tomorrow = Preview("https://example.com/tomorrow-easy.m4a")
+        show.next = NextShow(show.date.plusDays(1), mapOf(Tier.EASY to tomorrow))
+        val vm = viewModel()
+        advanceTimeBy(toMidnight - 5 * 60 * 1000L - 1_000)
+        assertThat(vm.state.value.isLastCall).isFalse()
+        assertThat(tomorrow in player.cached).isFalse()
+        advanceTimeBy(2_000)
+        assertThat(vm.state.value.isLastCall).isTrue()
+        assertThat(tomorrow in player.cached).isTrue()
+    }
+
+    @Test
+    fun `at midnight today's show loads in place of the old one`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+
+        advanceTimeBy(toMidnight + 1)
+        with(vm.state.value) {
+            assertThat(showNo).isEqualTo(13)
+            assertThat(isLastCall).isFalse()
+        }
+    }
+
+    @Test
+    fun `back on screen after midnight, today's show loads at once`() = runTest(dispatcher) {
+        val vm = viewModel()
+        vm.onAction(GameAction.OnScreenHidden)
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+        advanceTimeBy(toMidnight + 60_000)
+        // In the background nothing loads.
+        assertThat(vm.state.value.showNo).isEqualTo(12)
+        vm.onAction(GameAction.OnScreenShown)
+        assertThat(vm.state.value.showNo).isEqualTo(13)
+    }
+
+    @Test
+    fun `a try the server turns away as after midnight loads today's show`() = runTest(dispatcher) {
+        val vm = viewModel()
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+        show.nextTryError = TryError.Rule(GameError.ROUND_CLOSED)
+        vm.onAction(GameAction.OnSkipClick)
+        assertThat(vm.state.value.showNo).isEqualTo(13)
+    }
+
+    @Test
+    fun `a running show isn't reloaded over and over, and midnight still comes`() = runTest(dispatcher) {
+        val vm = viewModel()
+        val loadsAfterLaunch = show.loads
+        advanceTimeBy(60_000)
+        assertThat(show.loads).isEqualTo(loadsAfterLaunch)
+
+        show.showDate = show.date.plusDays(1)
+        show.showNo = 13
+        show.endsAt = show.endsAt.plusSeconds(86_400)
+        advanceTimeBy(toMidnight)
+        assertThat(vm.state.value.showNo).isEqualTo(13)
     }
 
     @Test

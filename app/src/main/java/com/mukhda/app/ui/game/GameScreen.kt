@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mukhda.app.R
 import com.mukhda.app.ui.common.ObserveAsEvents
@@ -96,6 +97,11 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit
     var celebrated by remember { mutableStateOf(Verdict.HIT) }
     val stageCenter = remember { mutableStateOf(Offset.Unspecified) }
 
+    // Started and stopped with the screen, so nothing retries while the app is in the background.
+    LifecycleStartEffect(viewModel) {
+        viewModel.onAction(GameAction.OnScreenShown)
+        onStopOrDispose { viewModel.onAction(GameAction.OnScreenHidden) }
+    }
     ObserveAsEvents(viewModel.events) { event ->
         when (event) {
             // A new message replaces the one showing, so repeated hints don't queue up and an
@@ -129,7 +135,9 @@ fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit
             animationsEnabled = animationsEnabled,
             modifier = Modifier.fillMaxSize(),
         )
-        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding())
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).navigationBarsPadding().imePadding()) { data ->
+            MessageCard(data.visuals.message)
+        }
     }
 }
 
@@ -163,6 +171,7 @@ fun GameScreen(
                 streak = state.streak,
                 hasPlayed = state.playedDays.isNotEmpty(),
                 onStreakClick = { onAction(GameAction.OnStreakClick) },
+                showLine = state.loadError == null,
             )
             val round = state.round
             when {
@@ -180,7 +189,10 @@ fun GameScreen(
                     // box. With the keyboard up it fills this space and scrolls; with the keyboard down
                     // the record stays visible above it. A tap anywhere else closes it.
                     Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.BottomCenter) {
-                        RoundContent(state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter, playhead, state.showTopPercent)
+                        RoundContent(
+                            state.selectedTier, round, state.isPlaying, animationsEnabled, onAction, onStageCenter, playhead, state.showTopPercent,
+                            lastCall = LastCall(state.endsAtEpochMs, state.clockOffsetMs).takeIf { state.isLastCall },
+                        )
                         if (state.isDropdownOpen) {
                             Box(
                                 Modifier
@@ -220,6 +232,7 @@ fun GameScreen(
                         ResultBar(
                             nextTier = state.nextTier,
                             endsAtEpochMs = state.endsAtEpochMs,
+                            clockOffsetMs = state.clockOffsetMs,
                             onAction = onAction,
                             modifier = barInsets,
                         )
@@ -227,23 +240,34 @@ fun GameScreen(
                 }
             }
         }
-        val round = state.round
-        if (state.isTicketOpen && round?.verdict != null) {
+        if (state.isTicketOpen && state.round?.verdict != null) {
             TicketOverlay(
                 ticket = TicketUi(
                     showNo = state.showNo,
                     dateLabel = state.dateLabel,
-                    tier = state.selectedTier,
-                    verdict = round.verdict,
-                    solvedAtStep = round.solvedAtStep,
-                    slots = round.slots,
+                    rows = Tier.entries.map { tier ->
+                        val round = state.rounds[tier]
+                        TicketRow(
+                            tier = tier,
+                            slots = round?.slots ?: List(ClipLadder.MAX_TRIES) { TrySlotUi.Empty(it + 1) },
+                            verdict = round?.verdict,
+                            isStarted = round?.isStarted == true,
+                            isWon = round?.isWon == true,
+                            topPercent = round?.reveal?.topPercent?.takeIf { state.showTopPercent },
+                        )
+                    },
                     streak = state.streak,
-                    topPercent = round.reveal?.topPercent?.takeIf { state.showTopPercent },
                 ),
-                round = round,
                 onAction = onAction,
             )
         }
+        // Over the game, dropping from the top: offline, then back online.
+        ConnectionBanner(
+            isOffline = state.isOffline,
+            tryWaiting = state.rounds.values.any { it.isSending },
+            animationsEnabled = animationsEnabled,
+            modifier = Modifier.align(Alignment.TopCenter),
+        )
         val showDate = state.showDate
         if (state.isHousefullOpen && showDate != null) {
             HousefullSheet(
@@ -252,6 +276,8 @@ fun GameScreen(
                 playedDays = state.playedDays,
                 today = showDate,
                 showNo = state.showNo,
+                endsAtEpochMs = state.endsAtEpochMs,
+                clockOffsetMs = state.clockOffsetMs,
                 onClose = { onAction(GameAction.OnHousefullClose) },
             )
         }
@@ -309,6 +335,7 @@ private fun RoundContent(
     onStageCenter: (Offset) -> Unit,
     playhead: () -> ClipProgress?,
     showTopPercent: Boolean,
+    lastCall: LastCall?,
 ) {
     val onPlayClick = { onAction(GameAction.OnPlayClick) }
     val reveal = round.reveal
@@ -334,6 +361,7 @@ private fun RoundContent(
                     reveal = reveal,
                     accent = tier.color(),
                     marquee = marquee(round, isPlaying),
+                    lastCall = lastCall,
                     modifier = Modifier
                         .padding(top = 16.dp)
                         .fillMaxWidth()
@@ -369,12 +397,11 @@ private fun marquee(round: RoundUi, isPlaying: Boolean): String = stringResource
 @Composable
 private fun RoundDetails(tier: Tier, round: RoundUi, playhead: () -> ClipProgress?) {
     ClipLadderStrip(tier = tier, currentStep = round.currentStep, playhead = playhead, modifier = Modifier.padding(top = 12.dp))
-    if (!round.isOpen) RoundOver(won = round.isWon, modifier = Modifier.padding(top = 10.dp))
     TrySlots(slots = round.slots, modifier = Modifier.padding(top = 12.dp, bottom = 6.dp))
 }
 
 private val MinStageHeight = 200.dp
-/** The ladder, round-over line and five tries take about 330 dp. */
+/** The ladder and five tries take about 330 dp. */
 private val RoundDetailsHeight = 330.dp
 /** The song, its actions and the result line take about 210 dp. */
 private val RevealDetailsHeight = 210.dp
@@ -431,17 +458,6 @@ private fun Tick(color: Color) {
         drawLine(color, Offset(size.width * 0.1f, size.height * 0.55f), Offset(size.width * 0.4f, size.height * 0.85f), stroke, StrokeCap.Round)
         drawLine(color, Offset(size.width * 0.4f, size.height * 0.85f), Offset(size.width * 0.95f, size.height * 0.15f), stroke, StrokeCap.Round)
     }
-}
-
-@Composable
-private fun RoundOver(won: Boolean, modifier: Modifier = Modifier) {
-    Text(
-        text = stringResource(if (won) R.string.round_won else R.string.round_lost),
-        style = MukhdaTheme.typography.bodyStrong,
-        color = if (won) MukhdaTheme.colors.win else MukhdaTheme.colors.red,
-        textAlign = TextAlign.Center,
-        modifier = modifier.fillMaxWidth(),
-    )
 }
 
 /** The round shown while the first show loads: the first clip, five empty tries. */

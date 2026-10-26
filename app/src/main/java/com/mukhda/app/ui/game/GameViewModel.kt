@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.mukhda.app.R
 import com.mukhda.app.ui.common.UiText
 import com.mukhda.app.ui.common.toUiText
+import com.mukhda.domain.DataError
 import com.mukhda.domain.GameError
 import com.mukhda.domain.Outcome
 import com.mukhda.domain.audio.ClipPlayer
+import com.mukhda.domain.connectivity.ConnectivityMonitor
 import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.model.RoundStatus
@@ -33,6 +35,7 @@ import com.mukhda.domain.telemetry.FeatureFlags
 import com.mukhda.domain.telemetry.Telemetry
 import com.mukhda.domain.telemetry.TelemetryEvent
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Clock
 import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
@@ -41,6 +44,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -55,6 +59,8 @@ class GameViewModel @Inject constructor(
     private val roundHistory: RoundHistory,
     private val telemetry: Telemetry,
     private val featureFlags: FeatureFlags,
+    private val connectivity: ConnectivityMonitor,
+    private val clock: Clock,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GameState(guessText = savedStateHandle[KEY_GUESS_TEXT] ?: ""))
@@ -82,6 +88,20 @@ class GameViewModel @Inject constructor(
     /** A try per tier that hasn't reached the server yet; the repository keeps it and resends it. */
     private val sending = mutableMapOf<Tier, String?>()
     private var resendJob: Job? = null
+    /** The game is on screen; off while the app is in the background. */
+    private val onScreen = MutableStateFlow(true)
+
+    /** The server's clock minus the phone's, from the last show: countdowns run on server time. */
+    private var clockOffsetMs = 0L
+    private fun serverNow(): Long = clock.millis() + clockOffsetMs
+    /** Waits for the show's last minutes, then its end (see [scheduleMidnight]). */
+    private var midnightJob: Job? = null
+    /** The show that just ended, until the next one loads. */
+    private var endedDate: LocalDate? = null
+    /** Times the old show came back after its end; capped, so a lagging server isn't asked forever. */
+    private var rolloverRetries = 0
+    /** The connection came back while the show was loading: if that load fails, it's tried again. */
+    private var reloadIfLoadFails = false
 
     init {
         // Load the search index now so the first keystroke in the guess box is instant.
@@ -92,6 +112,26 @@ class GameViewModel @Inject constructor(
             roundHistory.dayRounds().collect { rounds ->
                 playedDays = Streak.playedDates(rounds)
                 publishStreak()
+            }
+        }
+        // Offline shows on screen for as long as it lasts. Back online, a waiting try is sent and a
+        // show that failed to load is loaded at once, instead of at the next retry.
+        viewModelScope.launch {
+            connectivity.isOnline.collect { online ->
+                val wasOffline = _state.value.isOffline
+                _state.update { it.copy(isOffline = !online) }
+                if (online && wasOffline) {
+                    when {
+                        _state.value.loadError != null -> loadShow()
+                        // A load still out may yet fail for the connection it started without:
+                        // it's tried again once it's back, rather than a second load racing it.
+                        // Only the show itself counts, not the clips downloading after it.
+                        _state.value.isLoading -> reloadIfLoadFails = true
+                        sending.isNotEmpty() -> resendNow()
+                    }
+                    // Clips that didn't finish downloading before the drop: ready them now.
+                    show?.previews?.values?.let { previews -> launch { clipPlayer.cache(previews) } }
+                }
             }
         }
         viewModelScope.launch {
@@ -123,6 +163,18 @@ class GameViewModel @Inject constructor(
             GameAction.OnTicketShared -> logVerdict(TelemetryEvent::TicketShared)
             GameAction.OnAppleMusicClick -> telemetry.log(TelemetryEvent.AppleMusicOpened(_state.value.selectedTier))
             GameAction.OnTicketClose -> _state.update { it.copy(isTicketOpen = false) }
+            GameAction.OnScreenShown -> {
+                onScreen.value = true
+                // Back after the show ended (left in the background overnight): today's show at once.
+                // A timer may not have fired while the phone slept.
+                val current = show
+                if (current != null && serverNow() >= current.endsAt.toEpochMilli()) {
+                    rolloverRetries = 0
+                    rollOver(current.date)
+                }
+                else if (sending.isNotEmpty()) resendNow()
+            }
+            GameAction.OnScreenHidden -> onScreen.value = false
             GameAction.OnStreakClick -> {
                 _state.update { it.copy(isHousefullOpen = true) }
                 telemetry.log(TelemetryEvent.HousefullOpened(_state.value.streak))
@@ -132,6 +184,7 @@ class GameViewModel @Inject constructor(
     }
 
     private fun loadShow() {
+        reloadIfLoadFails = false
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, loadError = null) }
             showRepository.todaysShow()
@@ -146,8 +199,9 @@ class GameViewModel @Inject constructor(
                     }
                 }
                 .onFailure { error ->
-                    telemetry.recordError("load_show", error)
+                    if (!error.isConnectivity()) telemetry.recordError("load_show", error)
                     _state.update { it.copy(isLoading = false, loadError = error.toUiText()) }
+                    if (reloadIfLoadFails && !_state.value.isOffline) loadShow()
                 }
         }
     }
@@ -161,6 +215,17 @@ class GameViewModel @Inject constructor(
         val before = show?.rounds
         show = loaded
         telemetry.setContext("show_date", loaded.date.toString())
+        loaded.serverTime?.let { clockOffsetMs = it.toEpochMilli() - clock.millis() }
+        _state.update { it.copy(clockOffsetMs = clockOffsetMs) }
+        // The next show after the last one ended. Nothing about the old show's songs: one may come
+        // round again some day.
+        val ended = endedDate
+        if (ended != null && loaded.date > ended) {
+            endedDate = null
+            rolloverRetries = 0
+            _state.update { it.copy(isLastCall = false) }
+        }
+        scheduleMidnight(loaded)
         // The show's rounds were saved on the phone as it loaded: read them now, so the streak
         // reaches the screen with the show rather than a moment after it.
         playedDays = Streak.playedDates(roundHistory.dayRounds().first())
@@ -280,18 +345,19 @@ class GameViewModel @Inject constructor(
         // One requestId per try; the server ignores repeats of the same id.
         val requestId = UUID.randomUUID().toString()
         // Shown at once, before the server answers. A skip is always a skip, so it lands as one
-        // and the ladder moves on; a guess shows as sending until its verdict comes back.
-        if (type == TryType.SKIP) {
-            (before.apply(TryRecord(requestId, TryType.SKIP, null, TryResult.SKIPPED)) as? Outcome.Success)?.data?.let { skipped ->
-                this.show = show.copy(rounds = show.rounds + (tier to skipped))
-            }
+        // and the ladder moves on; a guess shows as sending until its verdict comes back. So does
+        // the last skip: it ends the round, and the round's song comes only with the answer.
+        val skipped = if (type == TryType.SKIP) {
+            (before.apply(TryRecord(requestId, TryType.SKIP, null, TryResult.SKIPPED)) as? Outcome.Success)?.data
+                ?.takeIf { it.status == RoundStatus.OPEN }
         } else {
-            sending[tier] = songId
+            null
         }
+        if (skipped != null) this.show = show.copy(rounds = show.rounds + (tier to skipped)) else sending[tier] = songId
         clearGuess()
         _state.update { it.copy(isSubmitting = true) }
         publishShow()
-        if (type == TryType.SKIP) preloadCurrentClip()
+        if (skipped != null) preloadCurrentClip()
 
         viewModelScope.launch {
             val result = showRepository.submitTry(show.date, tier, requestId, type, songId)
@@ -312,7 +378,8 @@ class GameViewModel @Inject constructor(
                     sending[tier] = songId
                     showRound(tier, before)
                     resendWhenBack()
-                    _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.try_queued)))
+                    // The offline strip says it; a message only when the phone thinks it's online.
+                    if (!_state.value.isOffline) _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.try_queued)))
                 } else {
                     // Refused: back to the round as it was, and the server has the last word.
                     telemetry.recordError("submit_try", result.error)
@@ -330,15 +397,43 @@ class GameViewModel @Inject constructor(
         publishShow()
     }
 
-    /** Retries the waiting tries, waiting longer each time, until the show loads again. */
+    /**
+     * Retries the waiting tries, waiting longer each time, until the show loads again. Only while
+     * the game is on screen and the phone is online: offline or in the background nothing runs, and
+     * coming back sends at once ([resendNow]). A try the app doesn't get to send is kept on the
+     * phone and sent on the next launch.
+     */
     private fun resendWhenBack() {
         if (resendJob?.isActive == true) return
         resendJob = viewModelScope.launch {
             var wait = RESEND_FIRST_MS
             while (sending.isNotEmpty()) {
                 delay(wait)
+                awaitCanSend()
                 showRepository.todaysShow().onSuccess { showLoaded(it) }
                 wait = (wait * 2).coerceAtMost(RESEND_MAX_MS)
+            }
+        }
+    }
+
+    /** No connection, or none good enough: the player's signal, not a fault worth reporting. */
+    private fun DataError.isConnectivity(): Boolean =
+        this == DataError.Network.NO_INTERNET || this == DataError.Network.REQUEST_TIMEOUT
+
+    /** Suspends until the game is on screen and the phone is online. */
+    private suspend fun awaitCanSend() {
+        combine(onScreen, _state) { shown, state -> shown && !state.isOffline }.first { it }
+    }
+
+    /** Sends the waiting tries now: the connection is back, or the game is on screen again. */
+    private fun resendNow() {
+        resendJob?.cancel()
+        resendJob = viewModelScope.launch {
+            awaitCanSend()
+            showRepository.todaysShow().onSuccess { showLoaded(it) }
+            if (sending.isNotEmpty()) {
+                resendJob = null
+                resendWhenBack()
             }
         }
     }
@@ -347,10 +442,8 @@ class GameViewModel @Inject constructor(
         when (error) {
             is TryError.Data -> _events.send(GameEvent.ShowMessage(error.error.toUiText()))
             is TryError.Rule -> when (error.error) {
-                GameError.ROUND_CLOSED -> {
-                    _events.send(GameEvent.ShowMessage(UiText.StringResource(R.string.error_round_closed)))
-                    loadShow()
-                }
+                // Sent just as the show ended: today's show.
+                GameError.ROUND_CLOSED -> show?.let { rollOver(it.date) } ?: loadShow()
                 // The server knows better than this screen: reload and trust it.
                 GameError.TRIES_EXHAUSTED, GameError.ALREADY_FINISHED -> loadShow()
                 GameError.INVALID_SONG ->
@@ -388,7 +481,7 @@ class GameViewModel @Inject constructor(
             // Once the round is over, the player knows the song: play all of it.
             clipPlayer.play(preview, if (round.isOpen) ClipLadder.clipLengthMs(round.currentStep) else null)
                 .onFailure {
-                    telemetry.recordError("play_clip", it)
+                    if (!it.isConnectivity()) telemetry.recordError("play_clip", it)
                     _events.send(GameEvent.ShowMessage(it.toUiText()))
                 }
             ticker.cancel()
@@ -406,6 +499,42 @@ class GameViewModel @Inject constructor(
         val step = _state.value.round?.currentStep ?: return
         viewModelScope.launch { clipPlayer.preload(preview, ClipLadder.clipLengthMs(step)) }
         if (_state.value.round?.isOpen == true) viewModelScope.launch { clipPlayer.wakeSpeaker() }
+    }
+
+    /**
+     * Times the show's end from the server's clock. In its last minutes the marquee counts down
+     * and tomorrow's clips download ahead; at the end, once the game is on screen, today's show
+     * loads.
+     */
+    private fun scheduleMidnight(loaded: Show) {
+        midnightJob?.cancel()
+        midnightJob = viewModelScope.launch {
+            val endsAt = loaded.endsAt.toEpochMilli()
+            delay(endsAt - LAST_CALL_MS - serverNow())
+            _state.update { it.copy(isLastCall = true) }
+            // The server sends tomorrow's clips in the last minutes; ask again if this show came earlier.
+            val next = loaded.next ?: (showRepository.todaysShow() as? Outcome.Success)?.data?.next
+            next?.let { launch { clipPlayer.cache(it.previews.values) } }
+            // Still the old show (asked a moment before the server's midnight): ask again shortly,
+            // for a minute at most; after that, the next time the game comes on screen.
+            if (loaded.date == endedDate) {
+                if (rolloverRetries++ >= MAX_ROLLOVER_RETRIES) return@launch
+                delay(RETRY_ROLLOVER_MS)
+            } else {
+                delay(endsAt - serverNow())
+            }
+            onScreen.first { it }
+            rollOver(loaded.date)
+        }
+    }
+
+    /** The show on [date] has ended: today's loads in its place. */
+    private fun rollOver(date: LocalDate) {
+        midnightJob?.cancel()
+        stopPlaying()
+        endedDate = date
+        _state.update { it.copy(isLastCall = false, isTicketOpen = false, isHousefullOpen = false) }
+        loadShow()
     }
 
     /** Logs [event] for the selected tier's finished round, with its verdict. */
@@ -426,6 +555,10 @@ class GameViewModel @Inject constructor(
 
     private companion object {
         const val KEY_GUESS_TEXT = "guessText"
+        /** From five minutes before the end, the marquee counts down (AGENTS.md §3.5). */
+        const val LAST_CALL_MS = 5 * 60 * 1000L
+        const val RETRY_ROLLOVER_MS = 2_000L
+        const val MAX_ROLLOVER_RETRIES = 30
         /** About one frame: the playhead moves smoothly. */
         const val PLAYHEAD_TICK_MS = 16L
         const val SEARCH_DEBOUNCE_MS = 150L
