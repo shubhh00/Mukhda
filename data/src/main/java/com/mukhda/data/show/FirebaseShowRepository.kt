@@ -63,10 +63,12 @@ class FirebaseShowRepository @Inject constructor(
         mutex.withLock {
             signIn()?.let { return@withLock Outcome.Error(it) }
             // Tries left over from an earlier session go first. A try for a day that's over comes
-            // back ROUND_CLOSED and is dropped; one that still can't get through waits for later.
+            // back ROUND_CLOSED and is dropped. One that still can't get through fails the load
+            // with its error: a show without it would look as if every try were in, and the
+            // screen would stop showing it as sending and stop trying.
             for (pending in tryDao.pending()) {
-                val sent = send(pending)
-                if (sent is Outcome.Error && sent.error.isTransient) break
+                val failed = ((send(pending) as? Outcome.Error)?.error as? TryError.Data)
+                if (failed != null && failed.isTransient) return@withLock Outcome.Error(failed.error)
             }
             fetchShow()
         }
