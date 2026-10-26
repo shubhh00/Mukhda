@@ -18,9 +18,13 @@ interface RoundDao {
     @Query("SELECT * FROM rounds WHERE date = :date AND tier = :tier")
     suspend fun round(date: String, tier: String): RoundEntity?
 
-    /** Rounds still open from before [date], closed at their show's end, as [status]. */
-    @Query("UPDATE rounds SET status = :status, endedAt = :endedAt WHERE date < :date AND status = 'OPEN'")
-    suspend fun closeOpenBefore(date: String, status: String, endedAt: Long)
+    /** The days before [date] that still have rounds open. */
+    @Query("SELECT DISTINCT date FROM rounds WHERE date < :date AND status = 'OPEN'")
+    suspend fun openDatesBefore(date: String): List<String>
+
+    /** [date]'s rounds still open, closed as [status] at [endedAt], the end of that day's show. */
+    @Query("UPDATE rounds SET status = :status, endedAt = :endedAt WHERE date = :date AND status = 'OPEN'")
+    suspend fun closeOpenOn(date: String, status: String, endedAt: Long)
 
     @Query("SELECT date, triesUsed FROM rounds")
     fun observeDayRounds(): Flow<List<DayRoundTuple>>

@@ -18,6 +18,7 @@ import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.TryResult
 import com.mukhda.domain.model.TryType
 import com.mukhda.domain.round.RoundState
+import com.mukhda.domain.round.ShowCalendar
 import com.mukhda.domain.round.TryRecord
 import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
@@ -156,8 +157,12 @@ class FirebaseShowRepository @Inject constructor(
             is Outcome.Error -> Outcome.Error((fetched.error as? TryError.Data)?.error ?: DataError.Network.UNKNOWN)
             is Outcome.Success -> {
                 current = fetched.data
-                // Rounds of earlier days still open on the phone closed at their midnight: unfinished.
-                roundDao.closeOpenBefore(fetched.data.date.toString(), RoundStatus.UNFINISHED.name, System.currentTimeMillis())
+                // Rounds of earlier days still open on the phone closed at their midnight: unfinished,
+                // each ended at its own show's end, never at the phone's time.
+                for (date in roundDao.openDatesBefore(fetched.data.date.toString())) {
+                    val end = ShowCalendar.showEnd(LocalDate.parse(date)).toEpochMilli()
+                    roundDao.closeOpenOn(date, RoundStatus.UNFINISHED.name, end)
+                }
                 fetched.data.rounds.values.filter { it.isStarted }.forEach { saveRound(fetched.data.date, it) }
                 fetched
             }
