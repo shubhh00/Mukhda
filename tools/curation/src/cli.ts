@@ -14,7 +14,7 @@ import { reschedule } from "./commands/reschedule.ts";
 import { date, wholeNumber } from "./args.ts";
 import { PILOT_YEARS, parseYears } from "./config.ts";
 
-const USAGE = "Usage: npm run <prompts|import|verify|report|review|index|index-db|youtube|lastfm|tier|vocals|publish|reschedule> [-- --years 2003,2013 | 2000-2026] [-- --per-angle] [-- --search]";
+const USAGE = "Usage: npm run <prompts|import|verify|report|review|index|index-db|youtube|lastfm|tier|vocals|publish|reschedule> [-- --years 2003,2013 | 2000-2026] [-- --reuse-before 2026-11-10] [-- --per-angle] [-- --search]";
 
 async function main(): Promise<void> {
   const { positionals, values } = parseArgs({
@@ -30,6 +30,7 @@ async function main(): Promise<void> {
       production: { type: "boolean", default: false },
       "songs-only": { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
+      "reuse-before": { type: "string" },
     },
   });
   const years = values.years ? parseYears(values.years) : [...PILOT_YEARS];
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
         seed: wholeNumber("--seed", values.seed, 0, 2 ** 31 - 1),
         production: values.production,
         songsOnly: values["songs-only"],
+        reuseBefore: date("--reuse-before", values["reuse-before"]),
       });
     case "reschedule":
       return reschedule({ production: values.production, dryRun: values["dry-run"], seed: wholeNumber("--seed", values.seed, 0, 2 ** 31 - 1) });

@@ -22,6 +22,11 @@ export interface PublishOptions {
   production: boolean;
   /** Only rewrite the songs (say, new clip starts), not the catalogue or the schedule. */
   songsOnly?: boolean;
+  /**
+   * Songs scheduled before this date don't count as played, so the year-long gap doesn't keep
+   * them out: for the shows before closed testing, which only the developer has seen.
+   */
+  reuseBefore?: string;
 }
 
 /** Firestore takes at most 500 writes in a batch. */
@@ -189,7 +194,11 @@ export async function publish(options: PublishOptions): Promise<void> {
   console.log(`Songs left per tier at a song a day: ${TIERS.map((t) => `${t} ${(perTier.get(t)?.length ?? 0) - used}`).join(", ")}.`);
 }
 
-/** The days to add after those already scheduled, which are never changed: they may be live. */
+/**
+ * The days to add after those already scheduled, which are never changed: they may be live.
+ * Returns them with the days whose songs count as already played (all of them, unless
+ * [PublishOptions.reuseBefore] says otherwise).
+ */
 async function planDays(
   db: Firestore,
   answers: TieredSong[],
@@ -220,7 +229,9 @@ async function planDays(
     tier: t.tier,
     year: indexed.get(t.songId)!.year,
   }));
-  const days = schedule(schedulable, existing, from, options.days, launch, options.seed);
+  // Days before [reuseBefore] were only ever seen by the developer: their songs may come back.
+  const counted = options.reuseBefore ? existing.filter((d) => d.date >= options.reuseBefore!) : existing;
+  const days = schedule(schedulable, counted, from, options.days, launch, options.seed);
 
-  return { existing, days };
+  return { existing: counted, days };
 }
