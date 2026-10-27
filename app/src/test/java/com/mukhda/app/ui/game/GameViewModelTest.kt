@@ -21,6 +21,7 @@ import com.mukhda.domain.model.Verdict
 import com.mukhda.domain.round.RoundState
 import com.mukhda.domain.round.Streak
 import com.mukhda.domain.search.SearchSong
+import com.mukhda.domain.telemetry.AppGate
 import com.mukhda.domain.show.TryError
 import com.mukhda.domain.audio.Preview
 import com.mukhda.domain.show.NextShow
@@ -709,6 +710,44 @@ class GameViewModelTest {
         show.endsAt = show.endsAt.plusSeconds(86_400)
         advanceTimeBy(toMidnight)
         assertThat(vm.state.value.showNo).isEqualTo(13)
+    }
+
+    @Test
+    fun `paused by the server, the game closes and the server isn't asked until it reopens`() = runTest(dispatcher) {
+        flags.gate.value = AppGate.PAUSED
+        val vm = viewModel()
+        assertThat(vm.state.value.gate).isEqualTo(AppGate.PAUSED)
+        assertThat(show.loads).isEqualTo(0)
+
+        vm.onAction(GameAction.OnGateTryAgainClick)
+        assertThat(flags.refreshes).isEqualTo(1)
+
+        flags.gate.value = AppGate.OPEN
+        assertThat(vm.state.value.gate).isEqualTo(AppGate.OPEN)
+        assertThat(show.loads).isEqualTo(1)
+        assertThat(vm.state.value.showNo).isEqualTo(12)
+    }
+
+    @Test
+    fun `paused mid-show, a waiting try waits for the game to reopen`() = runTest(dispatcher) {
+        show.nextTryError = TryError.Data(DataError.Network.NO_INTERNET)
+        val vm = viewModel()
+        vm.onAction(GameAction.OnSkipClick)
+        flags.gate.value = AppGate.PAUSED
+        val loadsBefore = show.loads
+        advanceTimeBy(120_000)
+        assertThat(show.loads).isEqualTo(loadsBefore)
+
+        flags.gate.value = AppGate.OPEN
+        advanceTimeBy(60_000)
+        assertThat(vm.state.value.round!!.isSending).isFalse()
+    }
+
+    @Test
+    fun `an update the server requires closes the game too`() = runTest(dispatcher) {
+        val vm = viewModel()
+        flags.gate.value = AppGate.UPDATE_REQUIRED
+        assertThat(vm.state.value.gate).isEqualTo(AppGate.UPDATE_REQUIRED)
     }
 
     @Test

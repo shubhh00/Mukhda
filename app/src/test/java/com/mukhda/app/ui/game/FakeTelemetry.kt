@@ -1,6 +1,7 @@
 package com.mukhda.app.ui.game
 
 import com.mukhda.domain.AppError
+import com.mukhda.domain.telemetry.AppGate
 import com.mukhda.domain.telemetry.FeatureFlags
 import com.mukhda.domain.telemetry.Telemetry
 import com.mukhda.domain.telemetry.TelemetryEvent
@@ -28,4 +29,11 @@ class FakeTelemetry : Telemetry {
 /** Switches a test sets directly. */
 class FakeFeatureFlags : FeatureFlags {
     override val showTopPercent = MutableStateFlow(false)
+    override val gate = MutableStateFlow(AppGate.OPEN)
+    var refreshes = 0
+        private set
+
+    override suspend fun refresh() {
+        refreshes++
+    }
 }

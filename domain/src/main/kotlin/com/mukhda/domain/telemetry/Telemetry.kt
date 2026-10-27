@@ -33,4 +33,21 @@ sealed interface TelemetryEvent {
 interface FeatureFlags {
     /** "Top X% today" on the result screen and the ticket. Off until it's turned on. */
     val showTopPercent: Flow<Boolean>
+
+    /** Whether the game may be played at all on this version; open until the server says not. */
+    val gate: Flow<AppGate>
+
+    /** Asks the server for the switches now, rather than waiting for them to arrive. */
+    suspend fun refresh()
+}
+
+/** What the server allows this copy of the app (AGENTS.md §8). */
+enum class AppGate {
+    OPEN,
+
+    /** This version is older than the oldest one allowed: a blocking "Update to keep playing". */
+    UPDATE_REQUIRED,
+
+    /** The kill switch: the game is closed for everyone until it's switched back. */
+    PAUSED,
 }

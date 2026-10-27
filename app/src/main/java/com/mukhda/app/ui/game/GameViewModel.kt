@@ -31,6 +31,7 @@ import com.mukhda.domain.show.Show
 import com.mukhda.domain.show.ShowRepository
 import com.mukhda.domain.show.TryError
 import com.mukhda.domain.show.isTransient
+import com.mukhda.domain.telemetry.AppGate
 import com.mukhda.domain.telemetry.FeatureFlags
 import com.mukhda.domain.telemetry.Telemetry
 import com.mukhda.domain.telemetry.TelemetryEvent
@@ -137,6 +138,17 @@ class GameViewModel @Inject constructor(
         viewModelScope.launch {
             featureFlags.showTopPercent.collect { on -> _state.update { it.copy(showTopPercent = on) } }
         }
+        // Closed by the server (an update needed, or the kill switch): the screen says so, the clip
+        // stops, and nothing more is asked of the server until it reopens.
+        viewModelScope.launch {
+            featureFlags.gate.collect { gate ->
+                val wasPaused = _state.value.gate == AppGate.PAUSED
+                _state.update { it.copy(gate = gate) }
+                if (gate != AppGate.OPEN) stopPlaying()
+                // Reopened: a show that couldn't load meanwhile loads now.
+                if (wasPaused && gate == AppGate.OPEN && (show == null || _state.value.loadError != null)) loadShow()
+            }
+        }
         loadShow()
     }
 
@@ -149,6 +161,7 @@ class GameViewModel @Inject constructor(
             GameAction.OnSkipClick -> submit(TryType.SKIP, songId = null)
             GameAction.OnPlayClick -> togglePlay()
             GameAction.OnRetryClick -> loadShow()
+            GameAction.OnGateTryAgainClick -> viewModelScope.launch { featureFlags.refresh() }
             GameAction.OnClearGuessClick -> {
                 searchJob?.cancel()
                 clearGuess()
@@ -184,6 +197,8 @@ class GameViewModel @Inject constructor(
     }
 
     private fun loadShow() {
+        // Paused, the server isn't asked; the show loads when the game reopens.
+        if (_state.value.gate == AppGate.PAUSED) return
         reloadIfLoadFails = false
         viewModelScope.launch {
             _state.update { it.copy(isLoading = true, loadError = null) }
@@ -422,7 +437,7 @@ class GameViewModel @Inject constructor(
 
     /** Suspends until the game is on screen and the phone is online. */
     private suspend fun awaitCanSend() {
-        combine(onScreen, _state) { shown, state -> shown && !state.isOffline }.first { it }
+        combine(onScreen, _state) { shown, state -> shown && !state.isOffline && state.gate != AppGate.PAUSED }.first { it }
     }
 
     /** Sends the waiting tries now: the connection is back, or the game is on screen again. */

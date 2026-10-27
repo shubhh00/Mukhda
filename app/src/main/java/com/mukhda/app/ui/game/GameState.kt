@@ -4,6 +4,7 @@ import androidx.compose.runtime.Stable
 import com.mukhda.app.ui.common.UiText
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.Verdict
+import com.mukhda.domain.telemetry.AppGate
 import java.time.LocalDate
 
 @Stable
@@ -26,6 +27,8 @@ data class GameState(
     val isHousefullOpen: Boolean = false,
     /** "Top X% today" on the result and the ticket: switched on from the server (Remote Config). */
     val showTopPercent: Boolean = false,
+    /** Whether the server lets this version play; anything but open covers the whole screen. */
+    val gate: AppGate = AppGate.OPEN,
     /** The show's last five minutes: the marquee counts down to its end. */
     val isLastCall: Boolean = false,
     /** The server's clock minus the phone's, for countdowns. */
@@ -124,6 +127,8 @@ sealed interface GameAction {
     data object OnSkipClick : GameAction
     data object OnPlayClick : GameAction
     data object OnRetryClick : GameAction
+    /** "Try again" while the game is paused: asks the server whether it's back. */
+    data object OnGateTryAgainClick : GameAction
     /** ✕ in the guess box. */
     data object OnClearGuessClick : GameAction
     /** The guess box got focus: bring back the suggestions for what's typed. */

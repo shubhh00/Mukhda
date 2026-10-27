@@ -95,6 +95,13 @@
     <string name="stop_clip">■ STOP</string>
     <string name="apple_music_credit" translatable="false">PREVIEWS COURTESY OF APPLE MUSIC</string>
     <string name="retry">Retry</string>
+    <!-- The server closed the game: this version is too old, or the kill switch is on. -->
+    <string name="gate_update_title">Update to keep playing</string>
+    <string name="gate_update_body">This version of Mukhda can\'t play today\'s show. Get the latest from Google Play.</string>
+    <string name="gate_update_action">Update</string>
+    <string name="gate_paused_title">Mukhda is on a short break</string>
+    <string name="gate_paused_body">The show will be back soon.</string>
+    <string name="gate_try_again">Try again</string>
 
     <!-- Result -->
     <!-- Over the verdict on the result card and the ticket: "Today's performance: BLOCKBUSTER!" -->

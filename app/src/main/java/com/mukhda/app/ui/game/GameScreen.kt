@@ -76,6 +76,7 @@ import com.mukhda.domain.model.ClipLadder
 import com.mukhda.domain.audio.ClipProgress
 import com.mukhda.domain.model.Tier
 import com.mukhda.domain.model.Verdict
+import com.mukhda.domain.telemetry.AppGate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -84,8 +85,10 @@ import kotlinx.coroutines.launch
 fun GameRoot(viewModel: GameViewModel = hiltViewModel(), onShowReady: () -> Unit = {}) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val playhead = viewModel.playhead.collectAsStateWithLifecycle()
-    val loading = state.isLoading
-    LaunchedEffect(loading) { if (!loading) onShowReady() }
+    // Something to open the curtain on: the show (or why it didn't load), or the server's word that
+    // the game is closed, as then no show is asked for.
+    val ready = !state.isLoading || state.gate != AppGate.OPEN
+    LaunchedEffect(ready) { if (ready) onShowReady() }
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -151,6 +154,11 @@ fun GameScreen(
     /** How far the playing clip has got; read where it's drawn, so playing recomposes nothing. */
     playhead: () -> ClipProgress? = { null },
 ) {
+    // Closed by the server: nothing of the game until it reopens.
+    if (state.gate != AppGate.OPEN) {
+        AppGateScreen(state.gate, onTryAgain = { onAction(GameAction.OnGateTryAgainClick) })
+        return
+    }
     val colors = MukhdaTheme.colors
     val hideKeyboard = rememberHideKeyboard()
     // Height of the guess bar (with the keyboard's padding); taps there keep the keyboard up.
